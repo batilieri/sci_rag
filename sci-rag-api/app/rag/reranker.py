@@ -13,6 +13,10 @@ from app.rag.retrieval import RetrievedChunk
 
 logger = get_logger(__name__)
 
+# Same tokenizer thread-safety constraint as the embedder: serialize scoring so
+# concurrent requests don't trigger "Already borrowed" on the fast tokenizer.
+_RERANK_LOCK = threading.Lock()
+
 
 class _RerankerHolder:
     _instance: Any | None = None
@@ -53,13 +57,17 @@ def _payload_text_for_rerank(payload: dict[str, Any]) -> str:
             " ".join(payload.get("palavras_chave_exatas") or []),
         ]
     text = " | ".join(p for p in parts if p)
-    return text[:2000]
+    # Keep it short: the cross-encoder forward pass on CPU scales with sequence
+    # length, and the title + first lines already carry the relevance signal.
+    return text[:700]
 
 
 def _rerank_sync(query: str, chunks: list[RetrievedChunk], normalize: bool) -> list[float]:
     model = _RerankerHolder.get()
     pairs = [[query, _payload_text_for_rerank(c.payload)] for c in chunks]
-    scores = model.compute_score(pairs, normalize=normalize)
+    with _RERANK_LOCK:
+        # Cap token length to keep CPU latency low (default would be 512).
+        scores = model.compute_score(pairs, normalize=normalize, max_length=256)
     if isinstance(scores, float):
         scores = [scores]
     return [float(s) for s in scores]

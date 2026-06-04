@@ -19,11 +19,11 @@ from app.storage.r2_client import StoredObject, deterministic_key, public_url_fo
 logger = get_logger(__name__)
 
 
-def _minio_kwargs() -> dict[str, Any]:
+def _minio_kwargs(endpoint: str | None = None) -> dict[str, Any]:
     settings = get_settings()
     return {
         "service_name": "s3",
-        "endpoint_url": settings.minio_endpoint,
+        "endpoint_url": endpoint or settings.minio_endpoint,
         "aws_access_key_id": settings.minio_user,
         "aws_secret_access_key": settings.minio_pass,
         "region_name": "us-east-1",
@@ -93,8 +93,10 @@ async def url_for_delivery(bucket: str, key: str, *, public_url: str | None = No
             return computed
         return await r2_client.generate_presigned_url(bucket, key)
 
+    # Sign with the public endpoint so the URL is reachable outside the docker net.
+    delivery_endpoint = settings.minio_public_endpoint or settings.minio_endpoint
     session = aioboto3.Session()
-    async with session.client(**_minio_kwargs()) as s3:
+    async with session.client(**_minio_kwargs(delivery_endpoint)) as s3:
         return await s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},

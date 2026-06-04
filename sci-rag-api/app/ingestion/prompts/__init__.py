@@ -11,3 +11,11 @@ _DIR = Path(__file__).resolve().parent
 @lru_cache
 def load(name: str) -> str:
     return (_DIR / name).read_text(encoding="utf-8")
+
+
+def render(name: str, /, **values: object) -> str:
+    """Fill ``{placeholder}`` slots without ``str.format`` (templates embed JSON braces)."""
+    rendered = load(name)
+    for key, value in values.items():
+        rendered = rendered.replace("{" + key + "}", str(value))
+    return rendered

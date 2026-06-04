@@ -62,6 +62,12 @@ class Settings(BaseSettings):
 
     # ---- MinIO (dev fallback) ----
     minio_endpoint: str = "http://minio:9000"
+    # Endpoint used only to SIGN delivery URLs handed to the bot/client. The upload
+    # path talks to MinIO over the docker network (minio_endpoint), but a URL signed
+    # for that internal host is unreachable outside docker. Point this at the
+    # host-published address (e.g. http://127.0.0.1:9000) so presigned URLs open.
+    # Falls back to minio_endpoint when empty.
+    minio_public_endpoint: str = ""
     minio_user: str = "minio"
     minio_pass: str = "minio12345"
     minio_bucket: str = "rag-images-dev"
@@ -72,6 +78,21 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-chat"
     deepseek_base_url: str = "https://api.deepseek.com/v1"
+
+    # ---- LLM resilience / scaling ----
+    # Default answering provider when modelo_preferido=auto. "deepseek" keeps the
+    # whole pipeline on DeepSeek; "claude" prefers Claude when its key is present.
+    llm_primary_provider: Literal["deepseek", "claude"] = "deepseek"
+    # Per-request timeout (seconds) for any LLM call.
+    llm_timeout_seconds: float = 60.0
+    # Total attempts per call (1 = no retry). Retries cover 429 / timeouts / 5xx.
+    llm_max_retries: int = 4
+    # Max concurrent in-flight LLM calls per worker process (backpressure against
+    # provider rate limits when serving many clients simultaneously).
+    llm_max_concurrency: int = 16
+    # httpx connection-pool sizing for the shared, reused provider clients.
+    llm_max_connections: int = 64
+    llm_max_keepalive: int = 32
 
     # ---- Embeddings ----
     embedding_model: str = "BAAI/bge-m3"
@@ -84,8 +105,13 @@ class Settings(BaseSettings):
     min_confianca_resposta: float = 0.70
     grey_zone_low: float = 0.65
     grey_zone_high: float = 0.80
-    retrieval_top_k: int = 20
+    retrieval_top_k: int = 15
     rerank_top_k: int = 5
+    # Quantos candidatos da busca entram no reranker (cross-encoder na CPU é caro:
+    # ~2-3s por candidato). Rerankear só a shortlist dos melhores corta a latência
+    # de ~2min para ~20s sem perder qualidade, pois o chunk certo já vem no topo da
+    # fusão RRF (dense+sparse). Aumente se notar recall ruim.
+    rerank_max_candidates: int = 8
     query_rewrite_variants: int = 3
 
     # ---- Cache TTL ----

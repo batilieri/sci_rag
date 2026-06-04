@@ -36,6 +36,12 @@ class EncodedChunk:
     colbert: list[list[float]] | None = None
 
 
+# The HuggingFace fast tokenizer inside BGE-M3 is not safe to call from multiple
+# threads at once ("Already borrowed"). Inference is CPU/GIL-bound anyway, so we
+# serialize encode() calls with this lock — no real throughput lost, race removed.
+_ENCODE_LOCK = threading.Lock()
+
+
 class _BGEM3Holder:
     _instance: Any | None = None
     _lock = threading.Lock()
@@ -98,14 +104,15 @@ def _encode_sync(
         return []
     model = _BGEM3Holder.get()
     settings = get_settings()
-    out = model.encode(
-        texts,
-        batch_size=batch_size or settings.embedding_batch_size,
-        max_length=8192,
-        return_dense=True,
-        return_sparse=True,
-        return_colbert_vecs=with_colbert,
-    )
+    with _ENCODE_LOCK:
+        out = model.encode(
+            texts,
+            batch_size=batch_size or settings.embedding_batch_size,
+            max_length=8192,
+            return_dense=True,
+            return_sparse=True,
+            return_colbert_vecs=with_colbert,
+        )
     results: list[dict[str, Any]] = []
     for i in range(len(texts)):
         results.append(

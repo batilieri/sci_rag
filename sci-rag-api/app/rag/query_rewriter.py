@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.rag.llm_clients import call_deepseek, parse_json_or_raise
-from app.rag.prompts import load_prompt
+from app.rag.prompts import render_prompt
 from app.schemas.common import MensagemHistorico
 
 logger = get_logger(__name__)
@@ -35,7 +35,8 @@ async def rewrite_query(pergunta: str, historico: list[MensagemHistorico]) -> Re
             variantes=[pergunta], intencao_provavel=None, termos_chave=_naive_terms(pergunta)
         )
 
-    prompt = load_prompt("query_rewriter.txt").format(
+    prompt = render_prompt(
+        "query_rewriter.txt",
         historico=_format_history(historico),
         pergunta=pergunta,
     )

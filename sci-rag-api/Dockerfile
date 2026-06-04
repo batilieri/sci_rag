@@ -70,8 +70,14 @@ WORKDIR /srv/app
 COPY . .
 
 RUN useradd --create-home --shell /bin/bash app \
-    && chown -R app:app /srv/app
+    && mkdir -p /home/app/.cache/huggingface \
+    && chown -R app:app /srv/app /home/app/.cache
 USER app
+
+# HF / sentence-transformers model cache (mounted as the models_cache volume).
+ENV HF_HOME=/home/app/.cache/huggingface \
+    HUGGINGFACE_HUB_CACHE=/home/app/.cache/huggingface \
+    SENTENCE_TRANSFORMERS_HOME=/home/app/.cache/torch/sentence_transformers
 
 EXPOSE 8000
 

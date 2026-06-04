@@ -17,7 +17,7 @@ from app.rag.llm_clients import (
     estimate_cost_usd,
     parse_json_or_raise,
 )
-from app.rag.prompts import load_prompt
+from app.rag.prompts import render_prompt
 from app.rag.retrieval import RetrievedChunk
 from app.schemas.common import MensagemHistorico
 from app.schemas.query import ClienteContexto
@@ -42,17 +42,47 @@ def _pick_model(
     pergunta_len: int,
     historico_len: int,
 ) -> str:
-    """deepseek for short/simple/high-confidence queries; claude otherwise."""
+    """Return the canonical backend ("deepseek" or "claude") to use for this query.
+
+    Honours an explicit request, but only routes to a provider whose key is set —
+    so a DeepSeek-only deployment never tries to call Claude.
+    """
     settings = get_settings()
+    has_claude = bool(settings.anthropic_api_key)
+    has_deepseek = bool(settings.deepseek_api_key)
+
+    # Explicit per-request preference (e.g. "deepseek-chat", "claude-sonnet-4-5").
     if requested and requested != "auto":
-        return requested
-    if not settings.anthropic_api_key:
+        if requested.startswith("claude"):
+            return "claude" if has_claude else "deepseek"
+        return "deepseek" if has_deepseek else "claude"
+
+    # auto: only one provider configured -> use it.
+    if not has_claude:
         return "deepseek"
-    if not settings.deepseek_api_key:
+    if not has_deepseek:
         return "claude"
+
+    # Both configured: route by the operator's chosen primary, escalating the
+    # harder/lower-confidence queries to Claude.
     if pergunta_len > 350 or historico_len > 8 or top_score < settings.grey_zone_high:
         return "claude"
-    return "deepseek"
+    return settings.llm_primary_provider
+
+
+async def _call_backend(backend: str, *, system: str, user: str) -> LLMResponse:
+    if backend == "claude":
+        return await call_claude(
+            system=system, user=user, temperature=0.0, max_tokens=1800, json_mode=True
+        )
+    return await call_deepseek(
+        system=system, user=user, temperature=0.0, max_tokens=1800, json_mode=True
+    )
+
+
+def _provider_configured(backend: str) -> bool:
+    settings = get_settings()
+    return bool(settings.anthropic_api_key) if backend == "claude" else bool(settings.deepseek_api_key)
 
 
 def _format_history(historico: list[MensagemHistorico], max_turns: int = 8) -> str:
@@ -113,12 +143,12 @@ async def generate(
     requested_model: str,
     top_score: float,
 ) -> GenerationResult:
-    template = load_prompt("agente_producao.txt")
     chunks_serialized = [_serialize_chunk(c) for c in chunks]
     chunks_json = orjson.dumps(chunks_serialized, option=orjson.OPT_INDENT_2).decode("utf-8")
     historico_str = _format_history(historico)
 
-    user_content = template.format(
+    user_content = render_prompt(
+        "agente_producao.txt",
         contexto_cliente=_format_cliente(cliente),
         historico=historico_str,
         pergunta=pergunta,
@@ -135,33 +165,19 @@ async def generate(
     started = asyncio.get_event_loop().time()
 
     try:
-        if backend == "claude":
-            llm_resp: LLMResponse = await call_claude(
-                system=system_msg,
-                user=user_content,
-                temperature=0.0,
-                max_tokens=1800,
-                json_mode=True,
-            )
-        else:
-            llm_resp = await call_deepseek(
-                system=system_msg,
-                user=user_content,
-                temperature=0.0,
-                max_tokens=1800,
-                json_mode=True,
-            )
+        llm_resp: LLMResponse = await _call_backend(backend, system=system_msg, user=user_content)
     except Exception as exc:
-        logger.warning("primary_llm_failed_falling_back", error=str(exc), backend=backend)
-        # Failover: try the other provider.
-        if backend == "claude":
-            llm_resp = await call_deepseek(
-                system=system_msg, user=user_content, temperature=0.0, max_tokens=1800, json_mode=True
-            )
-        else:
-            llm_resp = await call_claude(
-                system=system_msg, user=user_content, temperature=0.0, max_tokens=1800, json_mode=True
-            )
+        # Fail over only to a provider that is actually configured. In a
+        # DeepSeek-only deployment there is nothing to fall back to, so surface
+        # the original error instead of crashing on an unconfigured Claude call.
+        other = "deepseek" if backend == "claude" else "claude"
+        if not _provider_configured(other):
+            logger.error("primary_llm_failed_no_failover", error=str(exc), backend=backend)
+            raise
+        logger.warning(
+            "primary_llm_failed_falling_back", error=str(exc), backend=backend, failover=other
+        )
+        llm_resp = await _call_backend(other, system=system_msg, user=user_content)
 
     duration_ms = int((asyncio.get_event_loop().time() - started) * 1000)
 
@@ -204,10 +220,10 @@ async def _parse_with_retry(
         "seguindo o mesmo schema. Nao adicione texto fora do JSON.\n\n"
         f"RESPOSTA INVALIDA:\n{text}"
     )
+    # Repair with whichever provider is configured (DeepSeek preferred for cost).
+    repair_backend = "deepseek" if _provider_configured("deepseek") else "claude"
     try:
-        fix = await call_deepseek(
-            system=system_msg, user=fix_user, temperature=0.0, max_tokens=1800, json_mode=True
-        )
+        fix = await _call_backend(repair_backend, system=system_msg, user=fix_user)
         return parse_json_or_raise(fix.text)
     except Exception as exc:
         logger.warning("json_repair_failed", error=str(exc))

@@ -6,7 +6,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.core.logging import get_logger
-from app.ingestion.prompts import load
+from app.ingestion.prompts import render
 from app.rag.llm_clients import call_vision_claude, parse_json_or_raise
 
 logger = get_logger(__name__)
@@ -22,7 +22,7 @@ async def describe_image(
     if not settings.anthropic_api_key:
         return _stub_description(faq_context)
 
-    prompt = load("descricao_imagem.txt").format(faq_context=faq_context or "(sem contexto)")
+    prompt = render("descricao_imagem.txt", faq_context=faq_context or "(sem contexto)")
     try:
         resp = await call_vision_claude(
             system="Voce descreve telas do sistema SCI Contabil. Retorne JSON valido apenas.",

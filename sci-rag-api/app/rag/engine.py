@@ -106,6 +106,15 @@ class RAGEngine:
             await self._dispatch_transfer_webhook(response, payload)
             return response
 
+        # ---- 1b. saudação/smalltalk: responde na hora, sem rodar RAG ----
+        if guardrails.detect_greeting(scrubbed_message):
+            response = self._build_greeting_response(
+                request_id=request_id,
+                elapsed_ms=self._elapsed_ms(request_start),
+            )
+            await self._persist_log(response, payload, api_key_id, cache_key, top_score_busca=None)
+            return response
+
         # ---- 2. cache ----
         if not payload.opcoes.bypass_cache:
             cached = await self.cache.get(cache_key)
@@ -131,14 +140,14 @@ class RAGEngine:
         phase.stop_busca()
         score_top = top_score(chunks)
 
-        # ---- 5. retrieval guardrail ----
-        retr_guards = guardrails.check_retrieval(score_top, chunks)
+        # ---- 5. retrieval guardrail (no-results only; relevance is judged after rerank) ----
+        retr_guards = guardrails.check_no_results(chunks)
         triggered_names.extend(guardrails.names(retr_guards))
         block = guardrails.first_blocking(retr_guards)
         if block:
             response = self._build_transfer_response(
                 request_id=request_id,
-                motivo=block.motivo or MotivoTransbordo.LOW_RETRIEVAL_SCORE,
+                motivo=block.motivo or MotivoTransbordo.NO_RESULTS,
                 mensagem=block.mensagem_para_cliente or self._default_transfer_message(),
                 departamento=block.departamento_sugerido or "suporte_contabil",
                 elapsed_ms=self._elapsed_ms(request_start),
@@ -151,10 +160,39 @@ class RAGEngine:
             return response
 
         # ---- 6. rerank ----
+        # Cross-encoder reranking is CPU-bound (~2-3s/candidate), so only rerank the
+        # best shortlist from retrieval instead of every fused candidate. `chunks` is
+        # already sorted by retrieval score desc.
+        rerank_input = chunks[: settings.rerank_max_candidates]
         reranked = await rerank(
-            scrubbed_message, chunks, top_k=settings.rerank_top_k
+            scrubbed_message, rerank_input, top_k=settings.rerank_top_k
         )
         phase.stop_rerank()
+
+        # Normalized (0-1) top relevance from the reranker; fall back to passing the
+        # gate if the reranker was unavailable (chunks still exist; post-LLM
+        # confidence guardrail remains the backstop).
+        rerank_scores = [c.rerank_score for c in reranked if c.rerank_score is not None]
+        rerank_top = max(rerank_scores) if rerank_scores else 1.0
+
+        # ---- 6b. relevance guardrail (on the normalized rerank score) ----
+        rel_guards = guardrails.check_relevance(rerank_top)
+        triggered_names.extend(guardrails.names(rel_guards))
+        block = guardrails.first_blocking(rel_guards)
+        if block:
+            response = self._build_transfer_response(
+                request_id=request_id,
+                motivo=block.motivo or MotivoTransbordo.LOW_RETRIEVAL_SCORE,
+                mensagem=block.mensagem_para_cliente or self._default_transfer_message(),
+                departamento=block.departamento_sugerido or "suporte_contabil",
+                elapsed_ms=self._elapsed_ms(request_start),
+                guardrails_triggered=triggered_names,
+                modelo="-",
+                metricas_extra={"tempo_busca_ms": phase.busca_ms, "tempo_rerank_ms": phase.rerank_ms},
+            )
+            await self._persist_log(response, payload, api_key_id, cache_key, top_score_busca=score_top)
+            await self._dispatch_transfer_webhook(response, payload)
+            return response
 
         text_chunks, image_chunks = partition_text_image(reranked)
 
@@ -166,7 +204,7 @@ class RAGEngine:
             chunks=reranked,
             queries_reescritas=variantes,
             requested_model=payload.opcoes.modelo_preferido.value,
-            top_score=score_top,
+            top_score=rerank_top,
         )
         phase.stop_llm()
 
@@ -265,6 +303,25 @@ class RAGEngine:
         return (
             "Vou te transferir para um atendente humano que vai conseguir te ajudar melhor "
             "nesse caso. So um momento."
+        )
+
+    def _build_greeting_response(self, *, request_id: str, elapsed_ms: int) -> QueryResponse:
+        """Resposta instantânea para saudações, sem custo de RAG/LLM."""
+        return QueryResponse(
+            request_id=request_id,
+            acao=Acao.RESPONDER,
+            confianca=1.0,
+            departamento_sugerido=None,
+            motivo_transbordo=None,
+            intencao_detectada="saudacao",
+            necessita_followup=True,
+            mensagens=[MensagemSaidaTexto(ordem=0, conteudo=guardrails.GREETING_MESSAGE)],
+            faqs_consultados=[],
+            metricas=MetricasResposta(
+                tempo_total_ms=elapsed_ms,
+                modelo_usado="-",
+                cache_hit=False,
+            ),
         )
 
     def _build_transfer_response(

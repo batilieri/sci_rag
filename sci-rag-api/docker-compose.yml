@@ -25,6 +25,7 @@ x-app-env: &app-env
   R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
   R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
   MINIO_ENDPOINT: http://minio:9000
+  MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-}
   MINIO_USER: ${MINIO_USER:-minio}
   MINIO_PASS: ${MINIO_PASS:-minio12345}
   MINIO_BUCKET: ${MINIO_BUCKET:-rag-images-dev}
@@ -33,6 +34,12 @@ x-app-env: &app-env
   DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
   DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
   DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+  LLM_PRIMARY_PROVIDER: ${LLM_PRIMARY_PROVIDER:-deepseek}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+  LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-4}
+  LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-16}
+  LLM_MAX_CONNECTIONS: ${LLM_MAX_CONNECTIONS:-64}
+  LLM_MAX_KEEPALIVE: ${LLM_MAX_KEEPALIVE:-32}
   EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
   EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
   RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
@@ -45,7 +52,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: sci-rag-api:latest
-    environment: *app-env
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,11 +59,19 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+    environment:
+      <<: *app-env
+      APP_PORT: "8000"
+      APP_WORKERS: ${APP_WORKERS:-2}
     ports:
-      - "127.0.0.1:8000:8000"
+      # Host port is configurable to avoid clashes with other local stacks.
+      - "127.0.0.1:${API_PUBLISHED_PORT:-8000}:8000"
+    # Load the heavy ML models once in the master and share with workers (CoW).
+    command: ["gunicorn", "-c", "/srv/app/gunicorn.conf.py", "app.main:app"]
     volumes:
       - ./data:/srv/app/data
       - ./app:/srv/app/app:ro
+      - ./gunicorn.conf.py:/srv/app/gunicorn.conf.py:ro
       - models_cache:/home/app/.cache
     restart: unless-stopped
     healthcheck:
@@ -65,7 +79,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   worker:
     build:

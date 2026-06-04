@@ -80,6 +80,53 @@ def detect_specific_data_analysis(text: str) -> bool:
     return any(p.search(text) for p in SPECIFIC_NUMBER_ANALYSIS)
 
 
+# Saudações/smalltalk: palavras que disparam a saudação e "enchimento" inofensivo.
+_GREETING_TOKENS = frozenset(
+    {
+        "oi", "oie", "oii", "oiee", "ola", "olá", "opa", "salve", "alo", "alô",
+        "eai", "hey", "hello", "hi", "saudacoes", "saudações", "bomdia",
+    }
+)
+_GREETING_FILLER = frozenset(
+    {
+        "e", "ai", "aí", "ei", "bom", "boa", "dia", "tarde", "noite", "tudo",
+        "bem", "como", "vai", "voce", "você", "vc", "ta", "tá", "esta", "está",
+        "blz", "beleza", "td", "tao", "tão", "pessoal", "gente", "ai", "por",
+        "favor", "obrigado", "obrigada", "tudobem",
+    }
+)
+
+
+def detect_greeting(text: str) -> bool:
+    """True quando a mensagem é só saudação/smalltalk, sem uma dúvida de fato.
+
+    Estratégia: todos os tokens precisam ser de saudação ou enchimento (qualquer
+    palavra de conteúdo, como 'ECF' ou 'gerar', quebra a regra) e ao menos um
+    token precisa ser uma saudação real (ou um smalltalk tipo 'tudo bem').
+    """
+    cleaned = re.sub(r"[^\wÀ-ÿ\s]", " ", text.lower()).strip()
+    if not cleaned:
+        return False
+    tokens = cleaned.split()
+    if not tokens or len(tokens) > 6:
+        return False
+    if not all(t in _GREETING_TOKENS or t in _GREETING_FILLER for t in tokens):
+        return False
+    if any(t in _GREETING_TOKENS for t in tokens):
+        return True
+    # Sem saudação explícita, aceita smalltalk puro ("tudo bem?", "como vai").
+    smalltalk = {"tudo", "bem", "como", "vai", "td", "blz", "beleza"}
+    return any(t in smalltalk for t in tokens)
+
+
+GREETING_MESSAGE = (
+    "Ola! Sou o assistente de suporte da SCI Contabil. Posso te ajudar com duvidas "
+    "sobre ECD e ECF. Para eu te ajudar melhor, me conta qual e o problema: em qual "
+    "sistema/tela voce esta e o que esta acontecendo (algum erro, registro ou campo "
+    "especifico)?"
+)
+
+
 # ---------- pre-LLM guardrails ----------
 
 
@@ -174,46 +221,59 @@ def check_pre_llm(text: str) -> list[GuardrailResult]:
 # ---------- retrieval-time guardrails ----------
 
 
+def check_no_results(chunks: list[RetrievedChunk]) -> list[GuardrailResult]:
+    """Fail closed when retrieval returned nothing at all."""
+    if chunks:
+        return []
+    return [
+        GuardrailResult(
+            name="no_chunks_retrieved",
+            triggered=True,
+            force_transfer=True,
+            motivo=MotivoTransbordo.NO_RESULTS,
+            departamento_sugerido="suporte_contabil",
+            mensagem_para_cliente=(
+                "Nao encontrei conteudo na nossa base para responder isso com seguranca. "
+                "Vou te transferir para um atendente humano."
+            ),
+            confianca_resultante=0.0,
+        )
+    ]
+
+
+def check_relevance(top_score: float) -> list[GuardrailResult]:
+    """Fail closed when the best chunk is not relevant enough.
+
+    `top_score` must be a normalized 0-1 relevance score (the reranker's sigmoid
+    output), NOT the raw RRF fusion score from hybrid search — those live on
+    different scales, so applying the threshold to RRF would reject everything.
+    """
+    settings = get_settings()
+    if top_score >= settings.min_score_top_chunk:
+        return []
+    return [
+        GuardrailResult(
+            name="low_retrieval_score",
+            triggered=True,
+            force_transfer=True,
+            motivo=MotivoTransbordo.LOW_RETRIEVAL_SCORE,
+            departamento_sugerido="suporte_contabil",
+            mensagem_para_cliente=(
+                "Nao consegui encontrar uma resposta confiavel para isso na minha base. "
+                "Vou te transferir para um atendente humano que vai te ajudar melhor."
+            ),
+            confianca_resultante=0.0,
+            details={"top_score": f"{top_score:.3f}", "threshold": str(settings.min_score_top_chunk)},
+        )
+    ]
+
+
 def check_retrieval(
     top_score: float,
     chunks: list[RetrievedChunk],
 ) -> list[GuardrailResult]:
-    settings = get_settings()
-    results: list[GuardrailResult] = []
-    if not chunks:
-        results.append(
-            GuardrailResult(
-                name="no_chunks_retrieved",
-                triggered=True,
-                force_transfer=True,
-                motivo=MotivoTransbordo.NO_RESULTS,
-                departamento_sugerido="suporte_contabil",
-                mensagem_para_cliente=(
-                    "Nao encontrei conteudo na nossa base para responder isso com seguranca. "
-                    "Vou te transferir para um atendente humano."
-                ),
-                confianca_resultante=0.0,
-            )
-        )
-        return results
-
-    if top_score < settings.min_score_top_chunk:
-        results.append(
-            GuardrailResult(
-                name="low_retrieval_score",
-                triggered=True,
-                force_transfer=True,
-                motivo=MotivoTransbordo.LOW_RETRIEVAL_SCORE,
-                departamento_sugerido="suporte_contabil",
-                mensagem_para_cliente=(
-                    "Nao consegui encontrar uma resposta confiavel para isso na minha base. "
-                    "Vou te transferir para um atendente humano que vai te ajudar melhor."
-                ),
-                confianca_resultante=0.0,
-                details={"top_score": f"{top_score:.3f}", "threshold": str(settings.min_score_top_chunk)},
-            )
-        )
-    return results
+    """Back-compat wrapper: no-results first, then relevance on a normalized score."""
+    return check_no_results(chunks) + check_relevance(top_score)
 
 
 # ---------- post-LLM guardrails ----------

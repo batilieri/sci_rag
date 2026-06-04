@@ -6,10 +6,12 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -20,6 +22,7 @@ from app.api.v1.router import v1_router
 from app.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.rate_limit import limiter
+from app.rag.llm_clients import shutdown_llm_clients
 from app.schemas.common import ErroResposta
 from app.storage.postgres import init_db, shutdown_db
 from app.storage.qdrant_client import ensure_collection
@@ -50,6 +53,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("startup_dependency_init_failed", error=str(exc))
     yield
+    await shutdown_llm_clients()
     await shutdown_redis()
     await shutdown_db()
     logger.info("app_stopped")
@@ -99,6 +103,15 @@ def create_app() -> FastAPI:
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:
         return {"service": settings.app_name, "version": settings.app_version, "docs": "/docs"}
+
+    @app.get("/chat", include_in_schema=False)
+    async def chat_page() -> HTMLResponse:
+        html = (Path(__file__).parent / "web" / "chat.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> Response:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return app
 

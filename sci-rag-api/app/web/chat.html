@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SCI RAG — Chat de teste</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449;
+    --user: #2563eb; --bot: #334155; --text: #e2e8f0; --muted: #94a3b8;
+    --accent: #38bdf8; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 12px 16px; background: var(--panel); border-bottom: 1px solid #00000040;
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; color: var(--accent); }
+  header .spacer { flex: 1; }
+  header input {
+    background: var(--panel2); border: 1px solid #00000040; color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 12px; width: 260px;
+  }
+  header label { font-size: 11px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .row { display: flex; }
+  .row.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 72%; padding: 10px 14px; border-radius: 14px; line-height: 1.45;
+    white-space: pre-wrap; word-wrap: break-word; font-size: 14px;
+  }
+  .user .bubble { background: var(--user); color: #fff; border-bottom-right-radius: 4px; }
+  .bot .bubble { background: var(--bot); border-bottom-left-radius: 4px; }
+  .bubble img { max-width: 100%; border-radius: 8px; margin-top: 8px; display: block; border: 1px solid #00000040; }
+  .bubble .legenda { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .meta {
+    font-size: 11px; color: var(--muted); margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .pill { background: #00000030; padding: 2px 8px; border-radius: 10px; }
+  .pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.err { color: var(--err); }
+  .transfer .bubble { background: #422006; border: 1px solid var(--warn); }
+  footer { padding: 14px 16px; background: var(--panel); border-top: 1px solid #00000040; display: flex; gap: 10px; }
+  #msg {
+    flex: 1; background: var(--panel2); border: 1px solid #00000040; color: var(--text);
+    padding: 12px 14px; border-radius: 10px; font-size: 14px; resize: none; height: 46px; font-family: inherit;
+  }
+  button {
+    background: var(--accent); color: #04293a; border: none; padding: 0 22px; border-radius: 10px;
+    font-weight: 700; cursor: pointer; font-size: 14px;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .typing { color: var(--muted); font-style: italic; font-size: 13px; }
+  .hint { font-size: 11px; color: var(--muted); padding: 0 20px 8px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🤖 SCI RAG — Chat de teste</h1>
+    <div class="spacer"></div>
+    <label>API key
+      <input id="apikey" placeholder="rag_live_..." />
+    </label>
+    <label><input type="checkbox" id="debug" checked /> debug</label>
+    <button id="reset" style="background:#475569;color:#fff;padding:6px 12px;font-size:12px;">Nova conversa</button>
+  </header>
+
+  <div id="chat"></div>
+  <div class="hint">Dica: peça "me mostra a tela" ou "manda o print" para a IA enviar imagens. Ex.: <em>"Como vincular o saldo negativo de IRPJ na ECF? Me mostra a tela"</em></div>
+
+  <footer>
+    <textarea id="msg" placeholder="Digite a pergunta do cliente... (Enter envia, Shift+Enter quebra linha)"></textarea>
+    <button id="send">Enviar</button>
+  </footer>
+
+<script>
+const API = location.origin; // mesma origem da pagina
+const chat = document.getElementById('chat');
+const msgEl = document.getElementById('msg');
+const sendBtn = document.getElementById('send');
+const apikeyEl = document.getElementById('apikey');
+const debugEl = document.getElementById('debug');
+
+// Persistencia simples
+apikeyEl.value = localStorage.getItem('sci_apikey') || 'rag_live_teste_validacao_123';
+apikeyEl.onchange = () => localStorage.setItem('sci_apikey', apikeyEl.value.trim());
+
+function newId(p) { return p + '_' + Math.random().toString(36).slice(2, 10); }
+let clienteId = localStorage.getItem('sci_cliente') || newId('cli');
+let conversaId = newId('conv');
+localStorage.setItem('sci_cliente', clienteId);
+let historico = [];
+
+document.getElementById('reset').onclick = () => {
+  chat.innerHTML = ''; historico = []; conversaId = newId('conv');
+  addBot('Conversa reiniciada. Pode perguntar.', null);
+};
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+function escape(s) { return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function addUser(text) {
+  const row = el('div', 'row user');
+  row.appendChild(el('div', 'bubble', escape(text)));
+  chat.appendChild(row); chat.scrollTop = chat.scrollHeight;
+}
+
+function addBot(text, info, kind) {
+  const row = el('div', 'row bot' + (kind === 'transfer' ? ' transfer' : ''));
+  const b = el('div', 'bubble', escape(text));
+  if (info) b.appendChild(info);
+  row.appendChild(b);
+  chat.appendChild(row); chat.scrollTop = chat.scrollHeight;
+  return b;
+}
+
+function metaBar(resp) {
+  const m = resp.metricas || {};
+  const conf = (resp.confianca ?? 0);
+  const confCls = conf >= 0.8 ? 'ok' : (conf >= 0.6 ? 'warn' : 'err');
+  const bar = el('div', 'meta');
+  bar.appendChild(el('span', 'pill ' + confCls, 'confiança ' + conf.toFixed(2)));
+  bar.appendChild(el('span', 'pill', 'ação ' + (resp.acao||'')));
+  if (m.modelo_usado) bar.appendChild(el('span', 'pill', m.modelo_usado));
+  if (m.tempo_total_ms != null) bar.appendChild(el('span', 'pill', m.tempo_total_ms + ' ms'));
+  if (m.cache_hit) bar.appendChild(el('span', 'pill ok', 'cache'));
+  (resp.faqs_consultados||[]).forEach(f =>
+    bar.appendChild(el('span', 'pill', 'FAQ ' + f.faq_id + ' · ' + (f.score||0).toFixed(2))));
+  return bar;
+}
+
+async function send() {
+  const text = msgEl.value.trim();
+  if (!text) return;
+  const key = apikeyEl.value.trim();
+  if (!key) { alert('Informe a API key.'); return; }
+  localStorage.setItem('sci_apikey', key);
+
+  addUser(text);
+  msgEl.value = '';
+  sendBtn.disabled = true;
+  const typing = addBot('digitando…', null);
+  typing.parentElement.classList.add('typing');
+
+  const payload = {
+    mensagem: text,
+    cliente: { id_externo: clienteId },
+    conversa: { id_externo: conversaId, canal: 'web', historico: historico.slice(-10) },
+    opcoes: { incluir_debug: debugEl.checked, max_imagens: 3 }
+  };
+
+  try {
+    const r = await fetch(API + '/v1/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    typing.parentElement.remove();
+
+    if (!r.ok) {
+      addBot('⚠️ Erro ' + r.status + ': ' + (data.mensagem || data.erro || JSON.stringify(data)), null, 'transfer');
+      sendBtn.disabled = false; return;
+    }
+
+    const kind = data.acao === 'TRANSFERIR_HUMANO' ? 'transfer' : null;
+    const msgs = (data.mensagens || []).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+    let firstText = '';
+    let lastBubble = null;
+    msgs.forEach((mm, i) => {
+      if (mm.tipo === 'imagem') {
+        const b = lastBubble || addBot('', null, kind);
+        const img = el('img'); img.src = mm.url; img.alt = mm.legenda || '';
+        b.appendChild(img);
+        if (mm.legenda) b.appendChild(el('div', 'legenda', escape(mm.legenda)));
+      } else {
+        lastBubble = addBot(mm.conteudo || '', null, kind);
+        if (!firstText) firstText = mm.conteudo || '';
+      }
+    });
+    // barra de metricas na ultima bolha
+    if (lastBubble) lastBubble.appendChild(metaBar(data));
+
+    historico.push({ role: 'user', content: text });
+    if (firstText) historico.push({ role: 'assistant', content: firstText });
+
+  } catch (e) {
+    typing.parentElement.remove();
+    addBot('⚠️ Falha de rede: ' + e.message, null, 'transfer');
+  }
+  sendBtn.disabled = false;
+  msgEl.focus();
+}
+
+sendBtn.onclick = send;
+msgEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+addBot('Olá! Sou o agente de suporte SCI. Pergunte algo sobre ECD/ECF — e peça "me mostra a tela" para eu enviar prints.', null);
+msgEl.focus();
+</script>
+</body>
+</html>
