@@ -1,0 +1,35 @@
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Bytecode / cache Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Variáveis de ambiente / segredos
+.env
+*.env
+!.env.example
+
+# Logs
+*.log
+.playwright-mcp/
+
+# Dados gerados / uploads
+sci-rag-api/data/uploads/
+
+# Banco de dados local
+*.sqlite
+*.sqlite3
+*.db
+
+# IDEs / SO
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,91 @@
+{
+  "info": {
+    "name": "Nexiry RAG API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://127.0.0.1:8000"},
+    {"key": "api_key", "value": "rag_live_replace_me"}
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {"method": "GET", "url": "{{base_url}}/v1/health"}
+    },
+    {
+      "name": "Query",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "X-API-Key", "value": "{{api_key}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "url": "{{base_url}}/v1/query",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mensagem\": \"opcao K300/K315 esta cinza, o que faco?\",\n  \"cliente\": {\"id_externo\": \"12345\", \"licenca_sci\": \"Contabil Completo\"},\n  \"conversa\": {\"id_externo\": \"ticket_98765\", \"canal\": \"whatsapp\", \"historico\": []},\n  \"opcoes\": {\"incluir_debug\": false, \"max_imagens\": 3}\n}"
+        }
+      }
+    },
+    {
+      "name": "Feedback",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "X-API-Key", "value": "{{api_key}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "url": "{{base_url}}/v1/feedback",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_id\": \"req_replace_me\",\n  \"tipo\": \"positivo\",\n  \"fonte\": \"atendente\",\n  \"comentario\": \"ok\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Stats",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "X-API-Key", "value": "{{api_key}}"}],
+        "url": "{{base_url}}/v1/stats"
+      }
+    },
+    {
+      "name": "Admin Ingest",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "X-API-Key", "value": "{{api_key}}"}],
+        "url": "{{base_url}}/v1/admin/ingest",
+        "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": ""}]}
+      }
+    },
+    {
+      "name": "Admin Ingest Status",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "X-API-Key", "value": "{{api_key}}"}],
+        "url": "{{base_url}}/v1/admin/ingest/{{job_id}}"
+      }
+    },
+    {
+      "name": "Admin Chunks",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "X-API-Key", "value": "{{api_key}}"}],
+        "url": "{{base_url}}/v1/admin/chunks?page=1&page_size=20"
+      }
+    },
+    {
+      "name": "Admin Reindex",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "X-API-Key", "value": "{{api_key}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "url": "{{base_url}}/v1/admin/reindex",
+        "body": {"mode": "raw", "raw": "{\"scope\":\"all\",\"dry_run\":false}"}
+      }
+    }
+  ]
+}

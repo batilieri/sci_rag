@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: nexiry-rag
+    orgId: 1
+    folder: Nexiry RAG
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

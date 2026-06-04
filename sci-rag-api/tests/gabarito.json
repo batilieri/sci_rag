@@ -1,0 +1,10 @@
+[
+  {"pergunta": "como marco eliminacao K300 no balanco?", "faq_esperado": "7085", "deve_transbordar": false},
+  {"pergunta": "opcao K300/K315 esta cinza, o que faco?", "faq_esperado": "7085", "deve_transbordar": false},
+  {"pergunta": "como gera DRE consolidada com bloco K?", "faq_esperado": "7087", "deve_transbordar": false},
+  {"pergunta": "erro registro I030 livro R, como resolvo?", "faq_esperado": "6950", "deve_transbordar": false},
+  {"pergunta": "como exportar J100 J150 consolidado?", "faq_esperado": "7078", "deve_transbordar": false},
+  {"pergunta": "lancamento K300 com conta participante", "faq_esperado": "6693", "deve_transbordar": false},
+  {"pergunta": "comparar saldos I155 entre ECDs", "faq_esperado": "6596", "deve_transbordar": false},
+  {"pergunta": "analisa esses numeros do meu balanco", "deve_transbordar": true}
+]
