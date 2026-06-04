@@ -1,3 +1,3 @@
-"""Nexiry RAG API package."""
+"""SCI RAG API package."""
 
 __version__ = "0.1.0"

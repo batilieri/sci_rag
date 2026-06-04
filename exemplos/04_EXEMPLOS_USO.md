@@ -39,7 +39,7 @@ curl -X POST https://rag.seudominio.com/v1/admin/ingest \
 
 ---
 
-## 2. Python — uso direto (sem Nexiry)
+## 2. Python — uso direto (sem SCI)
 
 ```python
 import asyncio
@@ -124,14 +124,14 @@ A resposta vem com `mensagens[]` que podem ser usadas em nodes seguintes (Set, I
 
 ---
 
-## 5. Nexiry Django — integração completa
+## 5. SCI Django — integração completa
 
-No `bot_engine` do Nexiry, no ponto onde processa mensagem do cliente:
+No `bot_engine` do SCI, no ponto onde processa mensagem do cliente:
 
 ```python
-# nexiry/bot_engine/processor.py
-from nexiry.services.rag_client import RAGClient, RAGAPIPermanentError, RAGAPITransientError
-from nexiry.services.evolution import evolution_api
+# sci/bot_engine/processor.py
+from sci.services.rag_client import RAGClient, RAGAPIPermanentError, RAGAPITransientError
+from sci.services.evolution import evolution_api
 import asyncio, random, logging
 
 log = logging.getLogger(__name__)
@@ -218,12 +218,12 @@ async def processar_mensagem(ticket, mensagem):
 
 ---
 
-## 6. Recebendo webhooks da API no Nexiry
+## 6. Recebendo webhooks da API no SCI
 
-A API chama o Nexiry quando eventos importantes acontecem (transbordo, baixa confiança). Crie um endpoint no Nexiry:
+A API chama o SCI quando eventos importantes acontecem (transbordo, baixa confiança). Crie um endpoint no SCI:
 
 ```python
-# nexiry/webhooks/views.py
+# sci/webhooks/views.py
 import hmac, hashlib, time, json
 from django.conf import settings
 from django.http import JsonResponse
@@ -257,12 +257,12 @@ def webhook_rag_events(request):
 
     if event["evento"] == "query.transferred_human":
         # Notificar supervisores se muitos transbordos no mesmo tópico
-        from nexiry.alertas.tasks import verificar_pico_transbordo
+        from sci.alertas.tasks import verificar_pico_transbordo
         verificar_pico_transbordo.delay(event["dados"])
 
     elif event["evento"] == "query.low_confidence":
         # Logar para análise: pode ser gap na base
-        from nexiry.analytics.models import GapDeBase
+        from sci.analytics.models import GapDeBase
         GapDeBase.objects.create(
             query=event["dados"]["query"],
             confianca=event["dados"]["confianca"],
@@ -271,7 +271,7 @@ def webhook_rag_events(request):
 
     elif event["evento"] == "feedback.negative":
         # Notificar você para revisar
-        from nexiry.notifications import notificar_admin
+        from sci.notifications import notificar_admin
         notificar_admin.delay(
             titulo="Feedback negativo na IA",
             corpo=f"Cliente: {event['dados']['query']}\nResposta: {event['dados']['resposta']}",
@@ -280,10 +280,10 @@ def webhook_rag_events(request):
     return JsonResponse({"recebido": True})
 ```
 
-E na URL do Nexiry:
+E na URL do SCI:
 
 ```python
-# nexiry/urls.py
+# sci/urls.py
 urlpatterns = [
     # ...
     path("webhooks/rag-events", webhook_rag_events, name="rag_webhook"),
@@ -292,12 +292,12 @@ urlpatterns = [
 
 ---
 
-## 7. Painel Admin — React (no frontend Nexiry)
+## 7. Painel Admin — React (no frontend SCI)
 
 Para revisar/editar chunks da base direto no painel:
 
 ```jsx
-// nexiry-frontend/src/admin/RAGChunkEditor.jsx
+// sci-frontend/src/admin/RAGChunkEditor.jsx
 import { useState, useEffect } from "react";
 
 const RAG_API = process.env.REACT_APP_RAG_API_URL;

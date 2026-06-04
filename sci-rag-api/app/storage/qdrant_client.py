@@ -96,7 +96,7 @@ async def ensure_collection() -> None:
 
 def make_point_id(chunk_id: str) -> str:
     """Stable UUID5 derived from chunk_id so the same chunk always maps to the same point."""
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"nexiry-rag:{chunk_id}"))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"sci-rag:{chunk_id}"))
 
 
 def build_filter(category_in: list[str] | None = None, faq_in: list[str] | None = None) -> qmodels.Filter | None:

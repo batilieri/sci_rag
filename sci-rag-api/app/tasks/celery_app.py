@@ -9,7 +9,7 @@ from app.config import get_settings
 settings = get_settings()
 
 celery_app = Celery(
-    "nexiry-rag",
+    "sci-rag",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
     include=["app.tasks.ingestion_tasks", "app.tasks.webhook_tasks"],

@@ -2,13 +2,13 @@
 
 ## Mudança de paradigma
 
-Antes pensei em integrar o RAG como app Django **dentro** do Nexiry. Você quer o oposto: o RAG é um **microsserviço independente** que expõe endpoints HTTP/webhook. O Nexiry vira apenas um **cliente** dessa API.
+Antes pensei em integrar o RAG como app Django **dentro** do SCI. Você quer o oposto: o RAG é um **microsserviço independente** que expõe endpoints HTTP/webhook. O SCI vira apenas um **cliente** dessa API.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                                                                  │
 │  ┌─────────────────┐         HTTP POST          ┌─────────────┐ │
-│  │ Nexiry          │ ─────────────────────────► │             │ │
+│  │ SCI          │ ─────────────────────────► │             │ │
 │  │ (Django)        │   /v1/query                │  RAG API    │ │
 │  │                 │ ◄───────────────────────── │  (FastAPI)  │ │
 │  │ bot_engine      │   JSON: mensagens + imgs   │             │ │
@@ -44,12 +44,12 @@ Antes pensei em integrar o RAG como app Django **dentro** do Nexiry. Você quer 
 
 ## Endpoints da API
 
-### Endpoints públicos (consumidos pelo Nexiry e outros)
+### Endpoints públicos (consumidos pelo SCI e outros)
 
 | Método | Path | O que faz |
 |---|---|---|
 | `POST` | `/v1/query` | Consulta principal. Recebe mensagem do cliente + contexto, retorna resposta estruturada com mensagens + imagens. |
-| `POST` | `/v1/query/stream` | Versão streaming via SSE. Útil para painéis web; o Nexiry provavelmente não precisa. |
+| `POST` | `/v1/query/stream` | Versão streaming via SSE. Útil para painéis web; o SCI provavelmente não precisa. |
 | `POST` | `/v1/feedback` | Cliente/atendente reporta se a resposta foi boa. Alimenta retreinamento. |
 | `GET` | `/v1/health` | Healthcheck (Qdrant, Redis, LLM APIs) |
 | `GET` | `/v1/stats` | Estatísticas agregadas (queries/dia, taxa de transbordo, etc.) |
@@ -78,7 +78,7 @@ A API também pode **chamar webhooks** externos quando eventos importantes acont
 | `ingest.completed` | Ingestão de PDF termina | `{job_id, faqs_indexados, erros}` |
 | `feedback.negative` | Cliente marca thumbs-down | `{query, resposta, motivo_relatado}` |
 
-O Nexiry pode escutar esses webhooks para tomar ações: notificar você no Slack/Telegram quando muitos transbordos acontecem no mesmo tópico, por exemplo.
+O SCI pode escutar esses webhooks para tomar ações: notificar você no Slack/Telegram quando muitos transbordos acontecem no mesmo tópico, por exemplo.
 
 ---
 
@@ -138,7 +138,7 @@ O Nexiry pode escutar esses webhooks para tomar ações: notificar você no Slac
     {
       "ordem": 2,
       "tipo": "imagem",
-      "url": "https://storage.nexiry.com/sci/faq/7085/img_01.png",
+      "url": "https://storage.sci.com/sci/faq/7085/img_01.png",
       "legenda": "Tela do Balanço patrimonial — opção em destaque",
       "mime_type": "image/png"
     },
@@ -210,7 +210,7 @@ O Nexiry pode escutar esses webhooks para tomar ações: notificar você no Slac
 
 ### `POST /v1/feedback`
 
-Permite o Nexiry registrar quando um atendente marcou a resposta como boa/ruim:
+Permite o SCI registrar quando um atendente marcou a resposta como boa/ruim:
 
 **Request:**
 ```json
@@ -248,26 +248,26 @@ metadata: {"sistema": "SCI Contábil", "categoria": "ECD/ECF", "versao_doc": "20
 ## Autenticação
 
 ### API Key (header `X-API-Key`)
-Padrão para todas as chamadas. Cada consumidor (Nexiry, painel admin, n8n) tem sua própria chave com escopo:
+Padrão para todas as chamadas. Cada consumidor (SCI, painel admin, n8n) tem sua própria chave com escopo:
 
 ```
-nexiry_prod_pk_live_<32 chars>  → escopo: query, feedback
+sci_prod_pk_live_<32 chars>  → escopo: query, feedback
 admin_painel_sk_live_<32 chars> → escopo: tudo
 n8n_workflows_pk_live_<32 chars> → escopo: query
 ```
 
 ### HMAC para webhooks (recomendado mas opcional)
-Quando a API chama o webhook do Nexiry, assina o payload:
+Quando a API chama o webhook do SCI, assina o payload:
 
 ```
-POST https://nexiry.com/webhooks/rag-events
+POST https://sci.com/webhooks/rag-events
 Headers:
   X-RAG-Signature: sha256=abc123...
   X-RAG-Timestamp: 1716480000
 Body: {...}
 ```
 
-O Nexiry valida HMAC antes de processar.
+O SCI valida HMAC antes de processar.
 
 ---
 
@@ -308,9 +308,9 @@ Painel sugerido (Grafana): 1 dashboard com 8 widgets cobrindo isso.
 
 | Antes | Agora |
 |---|---|
-| App Django dentro do Nexiry | Microsserviço FastAPI independente |
-| Acoplado ao código do Nexiry | API com contrato versionado (`/v1/...`) |
-| Só o Nexiry consome | Qualquer cliente (painel, n8n, outros) consome |
-| Deploy junto do Nexiry | Deploy independente (pode ter VM própria) |
-| Crash do RAG = crash do Nexiry | Crash do RAG = Nexiry só não tem IA temporariamente |
+| App Django dentro do SCI | Microsserviço FastAPI independente |
+| Acoplado ao código do SCI | API com contrato versionado (`/v1/...`) |
+| Só o SCI consome | Qualquer cliente (painel, n8n, outros) consome |
+| Deploy junto do SCI | Deploy independente (pode ter VM própria) |
+| Crash do RAG = crash do SCI | Crash do RAG = SCI só não tem IA temporariamente |
 | Sem rate limit / sem auth multi-cliente | API keys com escopo, rate limit por chave |

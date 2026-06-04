@@ -190,7 +190,7 @@ Lembre-se: se a base não cobre a pergunta, responda com acao "TRANSFERIR_HUMANO
 }
 ```
 
-### Como o orquestrador no Nexiry processa:
+### Como o orquestrador no SCI processa:
 1. Lê o JSON
 2. Para cada item em `mensagens`: envia via Evolution API com pequeno delay (1-2s) para parecer humano
 3. Em `ordem_no_envio: 3` da imagem → envia a imagem depois da última mensagem

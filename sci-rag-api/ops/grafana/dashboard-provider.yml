@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: nexiry-rag
+  - name: sci-rag
     orgId: 1
-    folder: Nexiry RAG
+    folder: SCI RAG
     type: file
     disableDeletion: false
     editable: true

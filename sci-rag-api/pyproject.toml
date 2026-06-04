@@ -1,11 +1,11 @@
 [project]
-name = "nexiry-rag-api"
+name = "sci-rag-api"
 version = "0.1.0"
 description = "RAG API standalone para SCI Contabil - FAQ search, hybrid retrieval, transbordo seguro"
 requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "Proprietary" }
-authors = [{ name = "Nexiry" }]
+authors = [{ name = "SCI" }]
 
 dependencies = [
     "fastapi[standard]==0.115.0",

@@ -1,13 +1,13 @@
-# 🎯 RAG Cirúrgico para Nexiry — Base de Conhecimento SCI
+# 🎯 RAG Cirúrgico para SCI — Base de Conhecimento SCI
 
-Este pacote contém **tudo** que você precisa para construir uma base vetorial de altíssima precisão a partir do PDF de FAQs do sistema SCI Contábil, plugar no Nexiry, e fazer a IA do WhatsApp responder com texto + prints exatamente como a documentação oficial responde.
+Este pacote contém **tudo** que você precisa para construir uma base vetorial de altíssima precisão a partir do PDF de FAQs do sistema SCI Contábil, plugar no SCI, e fazer a IA do WhatsApp responder com texto + prints exatamente como a documentação oficial responde.
 
 ---
 
 ## 📂 Estrutura dos Arquivos
 
 ```
-nexiry_rag/
+sci_rag/
 ├── arquitetura/
 │   ├── 01_ARQUITETURA_GERAL.md       ← visão completa + stack técnica
 │   └── 03_DEPLOY_DOCKER.md            ← docker-compose, dockerfile, .env
@@ -49,9 +49,9 @@ O design aqui resolve cada um:
 ## 🚀 Roadmap de Implementação (sugestão de execução)
 
 ### Semana 1 — Infraestrutura base
-- [ ] Subir Qdrant via Docker no Oracle Cloud (mesmo VM do Nexiry ou separado)
+- [ ] Subir Qdrant via Docker no Oracle Cloud (mesmo VM do SCI ou separado)
 - [ ] Configurar MinIO ou Oracle Object Storage para imagens
-- [ ] Criar app Django `rag_engine` no Nexiry
+- [ ] Criar app Django `rag_engine` no SCI
 - [ ] Criar app Django `knowledge_ingestion`
 - [ ] Configurar credenciais Anthropic + DeepSeek
 
@@ -137,7 +137,7 @@ Você tem experiência com n8n e Supabase, então é tentador resolver tudo lá.
 3. **pgvector não suporta multi-vector (ColBERT)** — perde o reranking de altíssima precisão.
 4. **Vision LLM em batch via n8n é caro e lento** — fazer isso em Python puro com Celery é 5x mais rápido.
 
-n8n continua ótimo para **outras automações** do Nexiry (notificações, integrações, workflows simples). Mas para a **espinha dorsal do RAG cirúrgico**, Python + Qdrant + Django integrado é o caminho.
+n8n continua ótimo para **outras automações** do SCI (notificações, integrações, workflows simples). Mas para a **espinha dorsal do RAG cirúrgico**, Python + Qdrant + Django integrado é o caminho.
 
 ---
 
@@ -152,13 +152,13 @@ n8n continua ótimo para **outras automações** do Nexiry (notificações, inte
 
 3. **Mostre o output para mim** — posso ajustar os prompts e o pipeline com base no que o LLM produzir na prática.
 
-4. **Depois disso**, integramos no Nexiry e fazemos os testes end-to-end com Evolution API.
+4. **Depois disso**, integramos no SCI e fazemos os testes end-to-end com Evolution API.
 
 ---
 
 Quer que eu aprofunde alguma parte específica? Por exemplo:
 - Detalhar o app Django `rag_engine` com models, views, signals
 - Mostrar como o `bot_bloqueado_ciclo` se integra com o transbordo do RAG
-- Criar o painel React no frontend Nexiry para revisar/aprovar chunks
+- Criar o painel React no frontend SCI para revisar/aprovar chunks
 - Adaptar o pipeline para também ingerir Word/Excel/manuais de outros sistemas
 - Mostrar como rodar o BGE-M3 numa GPU pequena (T4) vs CPU pura

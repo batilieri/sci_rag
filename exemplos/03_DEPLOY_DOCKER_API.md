@@ -1,6 +1,6 @@
 # Docker Compose — RAG API Standalone
 
-Stack independente do Nexiry. Roda em VM dedicada (recomendado) ou na mesma VM do Nexiry.
+Stack independente do SCI. Roda em VM dedicada (recomendado) ou na mesma VM do SCI.
 
 ## `docker-compose.yml`
 
@@ -15,7 +15,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: nexiry-rag-api:latest
+    image: sci-rag-api:latest
     container_name: rag_api
     restart: unless-stopped
     ports:
@@ -54,7 +54,7 @@ services:
 
       # Webhooks outbound
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
-      WEBHOOK_NEXIRY_URL: ${WEBHOOK_NEXIRY_URL}
+      WEBHOOK_SCI_URL: ${WEBHOOK_SCI_URL}
 
       # Tuning
       MIN_SCORE_TOP_CHUNK: "0.65"
@@ -84,7 +84,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: nexiry-rag-api:latest
+    image: sci-rag-api:latest
     container_name: rag_worker
     restart: unless-stopped
     command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "-Q", "ingestion,webhooks"]
@@ -327,13 +327,13 @@ DEEPSEEK_API_KEY=sk-...
 
 # ── Webhooks
 WEBHOOK_SECRET=gere-com-openssl-rand-hex-32
-WEBHOOK_NEXIRY_URL=https://nexiry.seudominio.com/webhooks/rag-events
+WEBHOOK_SCI_URL=https://sci.seudominio.com/webhooks/rag-events
 
 # ── Grafana (se habilitar profile monitoring)
 GRAFANA_PASSWORD=mude-aqui
 
-# ── Para o Nexiry consumir (gerar com python scripts/generate_api_key.py)
-NEXIRY_API_KEY=rag_live_xxxxx...
+# ── Para o SCI consumir (gerar com python scripts/generate_api_key.py)
+SCI_API_KEY=rag_live_xxxxx...
 ```
 
 ## `ops/nginx.conf` (resumo essencial)
@@ -391,7 +391,7 @@ http {
 
 ```bash
 # 1. Clonar / criar projeto
-mkdir nexiry-rag-api && cd nexiry-rag-api
+mkdir sci-rag-api && cd sci-rag-api
 
 # 2. Copiar todos os arquivos do pacote
 
@@ -411,9 +411,9 @@ docker compose up -d
 curl http://localhost:8000/v1/health
 # {"status": "ok", "qdrant": "ok", "redis": "ok", "minio": "ok"}
 
-# 7. Gerar primeira API key (para o Nexiry consumir)
+# 7. Gerar primeira API key (para o SCI consumir)
 docker compose exec api python scripts/generate_api_key.py \
-    --nome "Nexiry Produção" \
+    --nome "SCI Produção" \
     --escopos query feedback
 
 # Output:
@@ -424,8 +424,8 @@ docker compose exec api python scripts/generate_api_key.py \
 docker compose exec api python scripts/seed_initial_pdf.py \
     --pdf /uploads/FAQ_SCI_Contabil.pdf
 
-# 9. Configurar o Nexiry para apontar para a API
-# No .env do Nexiry:
+# 9. Configurar o SCI para apontar para a API
+# No .env do SCI:
 # RAG_API_URL=https://rag.seudominio.com
 # RAG_API_KEY=rag_live_abc123...
 ```

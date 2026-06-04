@@ -1,11 +1,11 @@
-# Relatorio de execucao - Nexiry RAG API
+# Relatorio de execucao - SCI RAG API
 
 Data: 2026-05-23
 
 ## Estado encontrado
 
-- O projeto principal estava em `nexiry-rag-api/`.
-- Nao havia repositorio Git inicializado na raiz nem em `nexiry-rag-api/`.
+- O projeto principal estava em `sci-rag-api/`.
+- Nao havia repositorio Git inicializado na raiz nem em `sci-rag-api/`.
 - A API tinha boa parte do nucleo implementado: schemas, routers, RAG engine, guardrails, cache, storage, ingestao, Celery e modelos SQLAlchemy.
 - O trabalho anterior parou antes dos artefatos finais:
   - `app/main.py` inexistente, embora Dockerfile apontasse para `app.main:app`.
@@ -38,10 +38,10 @@ Data: 2026-05-23
 - Criada migration SQL:
   - `migrations/001_initial.sql`.
 - Criada documentacao:
-  - `nexiry-rag-api/README.md`.
+  - `sci-rag-api/README.md`.
   - `docs/api.md`.
   - `docs/webhooks.md`.
-  - `docs/integration-nexiry.md`.
+  - `docs/integration-sci.md`.
   - `docs/postman_collection.json`.
 - Criados testes:
   - Unitarios para chunker, cache key, PII/guardrails, query rewriter fallback, schemas, HMAC e API key scopes.
@@ -89,7 +89,7 @@ Resultado: compilacao concluida sem erro.
 .\\.venv\\Scripts\\python -c "from app.main import app; print(app.title, len(app.routes))"
 ```
 
-Resultado: `Nexiry RAG API 19`.
+Resultado: `SCI RAG API 19`.
 
 ```bash
 docker compose config
@@ -102,7 +102,7 @@ Resultado: configuracao Compose valida.
 .\\.venv\\Scripts\\python -m build --wheel --no-isolation
 ```
 
-Resultado: wheel `nexiry_rag_api-0.1.0-py3-none-any.whl` construido com sucesso.
+Resultado: wheel `sci_rag_api-0.1.0-py3-none-any.whl` construido com sucesso.
 
 ## Observacoes e limites
 

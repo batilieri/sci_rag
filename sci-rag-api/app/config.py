@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # ---- App ----
     app_env: Literal["development", "staging", "production"] = "production"
-    app_name: str = "nexiry-rag-api"
+    app_name: str = "sci-rag-api"
     app_version: str = "0.1.0"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
@@ -28,9 +28,9 @@ class Settings(BaseSettings):
     app_debug_responses: bool = False
 
     # ---- Auth ----
-    nexiry_api_key: str = ""
+    sci_api_key: str = ""
     webhook_secret: str = "change-me-32bytes-min"
-    webhook_nexiry_url: str = ""
+    webhook_sci_url: str = ""
 
     # ---- Postgres ----
     postgres_host: str = "postgres"

@@ -66,7 +66,7 @@ class APIKeyStore:
         Depois disso fica só o hash.
         """
         # Formato: <prefix>_<env>_<random>
-        # ex: nexiry_prod_pk_live_abc123def456...
+        # ex: sci_prod_pk_live_abc123def456...
         prefix = "rag"
         env = "live"
         random_part = secrets.token_urlsafe(32)
@@ -164,7 +164,7 @@ class APIKeyAuth:
 
 class WebhookSigner:
     """
-    Quando a API chama webhooks no Nexiry (ou outros), assina com HMAC-SHA256.
+    Quando a API chama webhooks no SCI (ou outros), assina com HMAC-SHA256.
     O receptor valida com a mesma chave compartilhada.
     """
 
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Gerar nova API key")
-    parser.add_argument("--nome", required=True, help="Nome descritivo da chave (ex: 'Nexiry Produção')")
+    parser.add_argument("--nome", required=True, help="Nome descritivo da chave (ex: 'SCI Produção')")
     parser.add_argument(
         "--escopos",
         nargs="+",

@@ -1,5 +1,5 @@
 """
-Runtime de consulta RAG — chamado a cada mensagem do cliente no Nexiry.
+Runtime de consulta RAG — chamado a cada mensagem do cliente no SCI.
 
 Pipeline:
     1. Recebe mensagem do cliente
@@ -9,7 +9,7 @@ Pipeline:
     5. Reranking ColBERT
     6. Monta contexto e chama LLM principal com PROMPT_03
     7. Aplica guardrails
-    8. Retorna JSON estruturado para o orquestrador Nexiry enviar via Evolution API
+    8. Retorna JSON estruturado para o orquestrador SCI enviar via Evolution API
 
 Uso (como módulo Django):
     from rag_engine.runtime import responder_mensagem

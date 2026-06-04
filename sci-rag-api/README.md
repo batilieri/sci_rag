@@ -1,4 +1,4 @@
-# Nexiry RAG API
+# SCI RAG API
 
 Microsservico FastAPI standalone para responder duvidas tecnicas do SCI Contabil via RAG, com Qdrant, Redis, Celery, Postgres e armazenamento S3-compatible para imagens (Cloudflare R2 em producao, MinIO em desenvolvimento).
 
@@ -20,7 +20,7 @@ curl http://127.0.0.1:8000/v1/health
 Gerar API key:
 
 ```bash
-docker compose exec api python scripts/generate_api_key.py --nome "Nexiry" --escopos query feedback admin:read admin:write
+docker compose exec api python scripts/generate_api_key.py --nome "SCI" --escopos query feedback admin:read admin:write
 ```
 
 Ingerir PDF:
@@ -59,7 +59,7 @@ Veja a documentacao completa em:
 
 - [docs/api.md](docs/api.md)
 - [docs/webhooks.md](docs/webhooks.md)
-- [docs/integration-nexiry.md](docs/integration-nexiry.md)
+- [docs/integration-sci.md](docs/integration-sci.md)
 - [docs/postman_collection.json](docs/postman_collection.json)
 
 ## Exemplo de consulta

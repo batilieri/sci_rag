@@ -52,7 +52,7 @@ log = logging.getLogger(__name__)
 
 QDRANT_URL = "http://localhost:6333"
 COLLECTION_NAME = "sci_faq_ecd_ecf"
-OBJECT_STORAGE_BASE = "https://storage.nexiry.com/sci/faq"  # placeholder
+OBJECT_STORAGE_BASE = "https://storage.sci.com/sci/faq"  # placeholder
 EMBEDDING_DIM = 1024  # BGE-M3
 
 # Carregue os prompts do disco (PROMPT_01 e PROMPT_02 que criamos)

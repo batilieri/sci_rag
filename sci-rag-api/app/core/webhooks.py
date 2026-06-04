@@ -43,7 +43,7 @@ async def send_webhook_now(
 ) -> bool:
     """Synchronous (best-effort) HTTP send. Use Celery for retries via tasks/webhook_tasks.py."""
     settings = get_settings()
-    url = target_url or settings.webhook_nexiry_url
+    url = target_url or settings.webhook_sci_url
     if not url:
         logger.warning("webhook_skip_no_target", webhook_event=event)
         return False
@@ -53,7 +53,7 @@ async def send_webhook_now(
     signer = WebhookSigner()
     headers = signer.sign(body)
     headers["Content-Type"] = "application/json"
-    headers["User-Agent"] = "nexiry-rag-api/0.1"
+    headers["User-Agent"] = "sci-rag-api/0.1"
 
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:

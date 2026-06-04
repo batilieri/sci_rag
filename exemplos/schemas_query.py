@@ -65,7 +65,7 @@ class MotivoTransbordo(str, Enum):
 
 class ClienteContexto(BaseModel):
     """Perfil do cliente para personalizar a resposta."""
-    id_externo: str = Field(..., description="ID do cliente no sistema chamador (Nexiry)")
+    id_externo: str = Field(..., description="ID do cliente no sistema chamador (SCI)")
     nome: str | None = Field(None, max_length=200)
     empresa: str | None = Field(None, max_length=200)
     licenca_sci: str | None = Field(None, description="Tipo de licença do sistema SCI")

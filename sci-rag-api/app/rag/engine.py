@@ -514,7 +514,7 @@ class RAGEngine:
 
     @staticmethod
     async def _dispatch_transfer_webhook(response: QueryResponse, payload: QueryRequest) -> None:
-        # Best-effort outbound webhook so Nexiry can update conversation state.
+        # Best-effort outbound webhook so SCI can update conversation state.
         await send_webhook_now(
             "query.transferred_human",
             {

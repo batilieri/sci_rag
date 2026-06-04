@@ -3,7 +3,7 @@
 ## Layout de pastas
 
 ```
-nexiry-rag-api/
+sci-rag-api/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── pyproject.toml             # Poetry ou uv
@@ -122,7 +122,7 @@ nexiry-rag-api/
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Cliente HTTP (Nexiry, painel, n8n, etc.)                │
+│ Cliente HTTP (SCI, painel, n8n, etc.)                │
 └────────────────────┬────────────────────────────────────┘
                      │
               [nginx + TLS]
@@ -170,7 +170,7 @@ Ordem recomendada de implementação:
 
 ```toml
 [project]
-name = "nexiry-rag-api"
+name = "sci-rag-api"
 version = "0.1.0"
 requires-python = ">=3.11"
 

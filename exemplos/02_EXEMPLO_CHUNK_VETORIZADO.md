@@ -78,7 +78,7 @@ Cada ponto no Qdrant tem:
       {
         "id": "img_faq_7085_01",
         "filename": "faq_7085_balanco_patrimonial_tela.png",
-        "url": "https://storage.nexiry.com/sci/faq/7085/img_01.png",
+        "url": "https://storage.sci.com/sci/faq/7085/img_01.png",
         "descricao_curta": "Tela 'Relatório balanço patrimonial' com a opção 'Considerar as eliminações do K300/K315' destacada em vermelho",
         "tipo": "screenshot_tela_sistema",
         "ordem": 1
@@ -136,7 +136,7 @@ A imagem vira um chunk **separado**, com vetor próprio (gerado a partir da desc
     "faq_id": "7085",
 
     "filename": "faq_7085_balanco_patrimonial_tela.png",
-    "storage_url": "https://storage.nexiry.com/sci/faq/7085/img_01.png",
+    "storage_url": "https://storage.sci.com/sci/faq/7085/img_01.png",
     "storage_path_interno": "sci/faq/7085/img_01.png",
     "hash_md5": "a3f5b8c2d9e1...",
     "tamanho_bytes": 84521,

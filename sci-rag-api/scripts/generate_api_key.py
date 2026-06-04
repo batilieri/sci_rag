@@ -20,7 +20,7 @@ from app.models.api_key import ApiKey
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a Nexiry RAG API key.")
+    parser = argparse.ArgumentParser(description="Create a SCI RAG API key.")
     parser.add_argument("--nome", required=True, help="Human-readable key name.")
     parser.add_argument(
         "--escopos",

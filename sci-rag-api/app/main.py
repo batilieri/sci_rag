@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="Nexiry RAG API",
+        title="SCI RAG API",
         version=settings.app_version,
         description=(
             "API standalone para consulta RAG das FAQs SCI Contabil, ingestao de PDFs, "

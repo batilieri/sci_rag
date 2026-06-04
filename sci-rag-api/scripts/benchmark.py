@@ -43,7 +43,7 @@ def _payload(case: dict[str, Any], cliente_id: str) -> dict[str, Any]:
         "cliente": {
             "id_externo": cliente_id,
             "nome": "Benchmark",
-            "empresa": "Nexiry",
+            "empresa": "SCI",
             "licenca_sci": case.get("licenca_sci", "Contabil"),
             "metadata_extra": {"benchmark": True},
         },

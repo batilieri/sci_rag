@@ -1,16 +1,16 @@
-# Prompt de construcao - Nexiry RAG API SCI
+# Prompt de construcao - SCI RAG API SCI
 
-Voce e um engenheiro senior full-stack/backend especializado em FastAPI, sistemas RAG de alta precisao, Qdrant, processamento de PDF, embeddings multilingues, filas assíncronas e integracoes via API. Construa uma API RAG standalone para o Nexiry responder duvidas tecnicas do sistema SCI Contabil via WhatsApp com precisao, imagens de apoio e transbordo seguro para atendimento humano.
+Voce e um engenheiro senior full-stack/backend especializado em FastAPI, sistemas RAG de alta precisao, Qdrant, processamento de PDF, embeddings multilingues, filas assíncronas e integracoes via API. Construa uma API RAG standalone para o SCI responder duvidas tecnicas do sistema SCI Contabil via WhatsApp com precisao, imagens de apoio e transbordo seguro para atendimento humano.
 
 ## Objetivo
 
-Criar um microsservico independente chamado `nexiry-rag-api`, com contrato HTTP versionado em `/v1`, capaz de:
+Criar um microsservico independente chamado `sci-rag-api`, com contrato HTTP versionado em `/v1`, capaz de:
 
 - Ingerir PDFs de FAQs do SCI Contabil.
 - Extrair texto, screenshots e metadados das FAQs.
 - Gerar chunks semanticos hierarquicos e chunks de imagem.
 - Vetorizar tudo no Qdrant usando BGE-M3 com vetores dense, sparse e ColBERT.
-- Receber perguntas do Nexiry via HTTP.
+- Receber perguntas do SCI via HTTP.
 - Fazer query rewriting, busca hibrida, reranking, geracao com LLM e guardrails.
 - Retornar uma resposta estruturada com textos, imagens, confianca, FAQs consultados, metricas e acao operacional.
 - Transferir para humano quando nao houver base suficiente, houver risco de alucinacao, baixa confianca ou pedido fora do escopo.
@@ -19,7 +19,7 @@ O sistema deve ser construido para producao, com Docker, autenticacao por API ke
 
 ## Direcao arquitetural obrigatoria
 
-Use FastAPI como API standalone. O Nexiry Django deve ser apenas consumidor da API, chamando `POST /v1/query` e recebendo o JSON de resposta. Nao implemente o RAG como app Django acoplado ao Nexiry.
+Use FastAPI como API standalone. O SCI Django deve ser apenas consumidor da API, chamando `POST /v1/query` e recebendo o JSON de resposta. Nao implemente o RAG como app Django acoplado ao SCI.
 
 Stack principal:
 
@@ -45,7 +45,7 @@ Stack principal:
 Crie o layout:
 
 ```text
-nexiry-rag-api/
+sci-rag-api/
   app/
     main.py
     config.py
@@ -607,15 +607,15 @@ Crie `.env.example` com:
 - `ANTHROPIC_API_KEY`
 - `DEEPSEEK_API_KEY`
 - `WEBHOOK_SECRET`
-- `WEBHOOK_NEXIRY_URL`
+- `WEBHOOK_SCI_URL`
 - `GRAFANA_PASSWORD`
-- `NEXIRY_API_KEY`
+- `SCI_API_KEY`
 
 Nao commitar segredos reais.
 
-## Integracao com Nexiry
+## Integracao com SCI
 
-Forneca exemplo de cliente Python async para Django/Celery do Nexiry:
+Forneca exemplo de cliente Python async para Django/Celery do SCI:
 
 - Enviar `POST /v1/query`.
 - Tratar erros permanentes como payload invalido.
@@ -624,7 +624,7 @@ Forneca exemplo de cliente Python async para Django/Celery do Nexiry:
 - Se `acao == RESPONDER`, enviar cada item de `mensagens` via Evolution API:
   - `tipo=texto`: enviar texto.
   - `tipo=imagem`: enviar imagem por URL com legenda.
-- Registrar auditoria no Nexiry com `request_id`, `acao`, `confianca`, `faqs_consultados`, `modelo_usado`, custo e tempo.
+- Registrar auditoria no SCI com `request_id`, `acao`, `confianca`, `faqs_consultados`, `modelo_usado`, custo e tempo.
 
 ## Testes obrigatorios
 
@@ -731,7 +731,7 @@ Para cada endpoint, incluir:
 - Possíveis códigos de status HTTP.
 - Regras de erro e fallback.
 - Observações de segurança.
-- Exemplo de payload para integração com Nexiry.
+- Exemplo de payload para integração com SCI.
 - Exemplo de resposta para `RESPONDER`, `TRANSFERIR_HUMANO` e `PEDIR_CLARIFICACAO`.
 
 Também documente:
@@ -740,7 +740,7 @@ Também documente:
 - Headers HMAC: `X-RAG-Signature` e `X-RAG-Timestamp`.
 - Como validar assinatura HMAC no receptor.
 - Variáveis de ambiente relacionadas.
-- Fluxo completo Nexiry → RAG → Evolution API.
+- Fluxo completo SCI → RAG → Evolution API.
 - Collection Postman ou Insomnia exportável em `docs/postman_collection.json`.
 
 Crie uma pasta:
@@ -748,7 +748,7 @@ Crie uma pasta:
 docs/
   api.md
   webhooks.md
-  integration-nexiry.md
+  integration-sci.md
   postman_collection.json
 
 ## Restricoes finais

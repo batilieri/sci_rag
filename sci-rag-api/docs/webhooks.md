@@ -1,6 +1,6 @@
 # Webhooks Outbound
 
-A API dispara webhooks best-effort para o Nexiry em eventos operacionais.
+A API dispara webhooks best-effort para o SCI em eventos operacionais.
 
 Eventos:
 
@@ -65,7 +65,7 @@ def valida(body: bytes, signature_header: str, timestamp_header: str, secret: st
 Variaveis:
 
 - `WEBHOOK_SECRET`
-- `WEBHOOK_NEXIRY_URL`
+- `WEBHOOK_SCI_URL`
 
 Seguranca:
 

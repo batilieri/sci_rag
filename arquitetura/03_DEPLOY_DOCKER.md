@@ -10,7 +10,7 @@ version: "3.9"
 services:
   qdrant:
     image: qdrant/qdrant:v1.12.0
-    container_name: nexiry_qdrant
+    container_name: sci_qdrant
     restart: unless-stopped
     ports:
       - "6333:6333"  # HTTP API
@@ -23,7 +23,7 @@ services:
       QDRANT__STORAGE__OPTIMIZERS__INDEXING_THRESHOLD: 10000
       QDRANT__TELEMETRY_DISABLED: "true"
     networks:
-      - nexiry_net
+      - sci_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 30s
@@ -40,7 +40,7 @@ services:
     build:
       context: ./rag_engine
       dockerfile: Dockerfile
-    container_name: nexiry_rag_worker
+    container_name: sci_rag_worker
     restart: unless-stopped
     depends_on:
       qdrant:
@@ -57,7 +57,7 @@ services:
       - ./prompts:/app/prompts:ro
       - bge_cache:/root/.cache/huggingface
     networks:
-      - nexiry_net
+      - sci_net
     deploy:
       resources:
         limits:
@@ -66,7 +66,7 @@ services:
   # Opcional: MinIO se não quiser Oracle Object Storage
   minio:
     image: minio/minio:latest
-    container_name: nexiry_minio
+    container_name: sci_minio
     restart: unless-stopped
     ports:
       - "9000:9000"
@@ -78,7 +78,7 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_PASS}
     command: server /data --console-address ":9001"
     networks:
-      - nexiry_net
+      - sci_net
 
 volumes:
   qdrant_data:
@@ -86,8 +86,8 @@ volumes:
   minio_data:
 
 networks:
-  nexiry_net:
-    external: true  # mesma rede dos outros containers Nexiry
+  sci_net:
+    external: true  # mesma rede dos outros containers SCI
 ```
 
 ## `Dockerfile` do worker
@@ -155,20 +155,20 @@ ANTHROPIC_API_KEY=sk-ant-...
 DEEPSEEK_API_KEY=sk-...
 
 # Object Storage
-ORACLE_STORAGE_BUCKET=nexiry-rag-images
+ORACLE_STORAGE_BUCKET=sci-rag-images
 MINIO_USER=minio_admin
 MINIO_PASS=senha-forte-aqui
 
-# Nexiry existente
-DJANGO_DB_URL=mysql://user:pass@mariadb:3306/nexiry
+# SCI existente
+DJANGO_DB_URL=mysql://user:pass@mariadb:3306/sci
 ```
 
 ## Subindo
 
 ```bash
 # Na VM Oracle Cloud
-cd /opt/nexiry
-docker network create nexiry_net  # se não existir
+cd /opt/sci
+docker network create sci_net  # se não existir
 docker compose -f docker-compose.rag.yml up -d
 
 # Verificar
@@ -176,9 +176,9 @@ curl http://localhost:6333/healthz
 curl http://localhost:6333/collections
 ```
 
-## Integração com Nexiry existente
+## Integração com SCI existente
 
-No `settings.py` do Django Nexiry:
+No `settings.py` do Django SCI:
 
 ```python
 INSTALLED_APPS = [

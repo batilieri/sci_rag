@@ -1,11 +1,11 @@
-name: nexiry-rag-api
+name: sci-rag-api
 
 x-app-env: &app-env
   APP_ENV: ${APP_ENV:-production}
   APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
-  NEXIRY_API_KEY: ${NEXIRY_API_KEY:-}
+  SCI_API_KEY: ${SCI_API_KEY:-}
   WEBHOOK_SECRET: ${WEBHOOK_SECRET:-change-me-32bytes-min}
-  WEBHOOK_NEXIRY_URL: ${WEBHOOK_NEXIRY_URL:-}
+  WEBHOOK_SCI_URL: ${WEBHOOK_SCI_URL:-}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
   POSTGRES_DB: ${POSTGRES_DB:-rag}
@@ -44,7 +44,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: nexiry-rag-api:latest
+    image: sci-rag-api:latest
     environment: *app-env
     depends_on:
       postgres:
@@ -71,7 +71,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: nexiry-rag-api:latest
+    image: sci-rag-api:latest
     environment: *app-env
     depends_on:
       postgres:

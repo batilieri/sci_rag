@@ -1,10 +1,10 @@
-# Integracao Nexiry
+# Integracao SCI
 
 Fluxo:
 
 ```text
-WhatsApp -> Evolution API -> Nexiry Django/Celery -> POST /v1/query -> RAG API
-RAG API -> JSON estruturado -> Nexiry -> Evolution API texto/imagem
+WhatsApp -> Evolution API -> SCI Django/Celery -> POST /v1/query -> RAG API
+RAG API -> JSON estruturado -> SCI -> Evolution API texto/imagem
 ```
 
 ## Cliente Python async
@@ -72,7 +72,7 @@ for msg in resp["mensagens"]:
 
 ## Auditoria recomendada
 
-Persistir no Nexiry:
+Persistir no SCI:
 
 - `request_id`
 - `acao`

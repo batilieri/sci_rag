@@ -12,7 +12,7 @@ Escopos aceitos: `query`, `feedback`, `admin:read`, `admin:write`, `admin:*`.
 
 ## POST /v1/query
 
-Objetivo: receber mensagem do Nexiry, executar RAG e retornar uma acao operacional.
+Objetivo: receber mensagem do SCI, executar RAG e retornar uma acao operacional.
 
 Escopo: `query`.
 
@@ -239,4 +239,4 @@ Formato comum:
 {"erro": "validacao", "mensagem": "Payload invalido", "campos": [{"campo": "mensagem", "erro": "Field required"}]}
 ```
 
-Fallbacks: erros transientes do RAG devem levar o Nexiry a transferir para humano; erros permanentes de payload devem ser corrigidos pelo integrador.
+Fallbacks: erros transientes do RAG devem levar o SCI a transferir para humano; erros permanentes de payload devem ser corrigidos pelo integrador.

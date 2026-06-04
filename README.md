@@ -1,164 +1,183 @@
-# 🎯 RAG Cirúrgico para Nexiry — Base de Conhecimento SCI
+# SCI RAG
 
-Este pacote contém **tudo** que você precisa para construir uma base vetorial de altíssima precisão a partir do PDF de FAQs do sistema SCI Contábil, plugar no Nexiry, e fazer a IA do WhatsApp responder com texto + prints exatamente como a documentação oficial responde.
+API de **RAG (Retrieval-Augmented Generation)** que responde dúvidas técnicas do sistema **SCI Contábil** (FAQs, ECD, ECF, Bloco K, etc.) com alta precisão — devolvendo texto **e** imagens de apoio exatamente como a documentação oficial responde, e transferindo para um atendente humano quando não tem certeza.
+
+Foi desenhada para ser plugada num orquestrador de atendimento (ex.: bot de WhatsApp via Evolution API): o orquestrador manda a pergunta do cliente, a API devolve a resposta pronta para enviar.
 
 ---
 
-## 📂 Estrutura dos Arquivos
+## O que ela faz
+
+- 🔍 **Busca híbrida** na base de FAQs (semântica + por palavra-chave exata, como "K300", "I012").
+- 🖼️ **Anexa as imagens certas** (prints de tela) junto da resposta, quando fazem sentido.
+- 🛡️ **Não inventa**: vários guardrails impedem alucinação e respostas fora de escopo.
+- 🤝 **Transbordo seguro**: se a confiança for baixa, devolve `transferir_humano` com o motivo e o departamento sugerido.
+- 📊 **Observável**: registra cada consulta (custo, latência, modelo, confiança) e expõe métricas Prometheus.
+
+---
+
+## Como funciona
+
+A resposta de cada pergunta passa por um pipeline de 10 etapas (`sci-rag-api/app/rag/engine.py`):
 
 ```
-nexiry_rag/
-├── arquitetura/
-│   ├── 01_ARQUITETURA_GERAL.md       ← visão completa + stack técnica
-│   └── 03_DEPLOY_DOCKER.md            ← docker-compose, dockerfile, .env
-├── exemplos/
-│   └── 02_EXEMPLO_CHUNK_VETORIZADO.md ← payload JSON real do Qdrant
-├── prompts/
-│   ├── PROMPT_01_extracao_estruturada.md  ← LLM transforma FAQ em JSON
-│   ├── PROMPT_02_descricao_imagem.md      ← Vision LLM descreve telas
-│   └── PROMPT_03_agente_rag_producao.md   ← agente que responde no WhatsApp
-└── scripts/
-    ├── ingest_pdf.py     ← roda 1x para indexar o PDF inteiro
-    └── rag_runtime.py    ← chamado a cada mensagem do cliente
+Pergunta do cliente
+   │
+   ├─ 1. Guardrails de entrada  → remove dados sensíveis (PII), detecta fora de escopo
+   ├─ 2. Cache                  → resposta repetida volta na hora
+   ├─ 3. Reescrita da query     → gera variações da pergunta para melhorar a busca
+   ├─ 4. Busca híbrida (Qdrant) → fusão de embedding denso + esparso (BGE-M3)
+   ├─ 5. Guardrail de busca     → se nada relevante, transfere para humano
+   ├─ 6. Reranking              → reordena os melhores trechos por relevância
+   ├─ 7. Geração (LLM)          → monta resposta em JSON citando os FAQs usados
+   ├─ 8. Guardrails de saída    → bloqueia FAQ inventado / confiança abaixo do piso
+   ├─ 9. Resolve imagens        → busca URLs das imagens no storage (R2/MinIO)
+   └─ 10. Persiste + cache + webhook
+   │
+   ▼
+Resposta (texto + imagens)  ou  transferir_humano
+```
+
+### Stack
+
+| Camada | Tecnologia |
+|---|---|
+| API | FastAPI + Uvicorn/Gunicorn |
+| Banco vetorial | Qdrant |
+| Embeddings / rerank | BGE-M3 (denso + esparso) via FlagEmbedding |
+| LLM | Anthropic Claude e/ou DeepSeek |
+| Banco relacional | PostgreSQL (logs, chunks, API keys, imagens) |
+| Cache / filas | Redis + Celery |
+| Imagens | S3-compatible — Cloudflare R2 (produção) ou MinIO (dev) |
+| Ingestão de PDF | Docling + PyMuPDF + Vision LLM |
+| Observabilidade | Prometheus + Grafana, logs estruturados (structlog) |
+
+---
+
+## Estrutura do repositório
+
+```
+sci_rag/
+├── sci-rag-api/          ← A API (o projeto de verdade, pronto para rodar)
+│   ├── app/              ← código FastAPI (api, rag, ingestion, storage, models...)
+│   ├── scripts/          ← gerar API key, ingerir PDF, reindexar, benchmark
+│   ├── tests/            ← testes unitários, integração e e2e
+│   ├── docs/             ← documentação de API, webhooks e integração
+│   ├── ops/              ← nginx, prometheus, grafana
+│   ├── docker-compose.yml
+│   └── README.md         ← guia operacional detalhado da API
+├── arquitetura/          ← documentos de design da solução
+├── exemplos/             ← exemplos de payloads, chunks e prompts (POC original)
+└── scripts/              ← scripts da POC inicial (ingest_pdf, rag_runtime)
+```
+
+> O conteúdo executável vive em **`sci-rag-api/`**. As pastas `arquitetura/`, `exemplos/` e `scripts/` são o material de design e a prova de conceito que originaram a API.
+
+---
+
+## Como usar
+
+> Pré-requisitos: Docker + Docker Compose. Todos os comandos abaixo rodam dentro de `sci-rag-api/`.
+
+### 1. Subir o ambiente
+
+```bash
+cd sci-rag-api
+cp .env.example .env          # ajuste as variáveis (veja abaixo)
+
+docker compose up -d postgres redis qdrant
+docker compose --profile local-storage up -d minio   # storage de imagens em dev
+docker compose up -d api worker
+```
+
+Confira a saúde:
+
+```bash
+curl http://127.0.0.1:8000/v1/health
+```
+
+### 2. Gerar uma API key
+
+Todos os endpoints de negócio exigem o header `X-API-Key`.
+
+```bash
+docker compose exec api python scripts/generate_api_key.py \
+  --nome "SCI" --escopos query feedback admin:read admin:write
+```
+
+### 3. Ingerir a base (PDF de FAQs)
+
+```bash
+docker compose exec api python scripts/seed_initial_pdf.py \
+  --pdf /srv/app/data/uploads/FAQ_SCI.pdf --async
+```
+
+### 4. Consultar
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/query \
+  -H "X-API-Key: $RAG_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mensagem": "opcao K300/K315 esta cinza, o que faco?",
+    "cliente": {"id_externo": "12345", "licenca_sci": "Contabil Completo"},
+    "conversa": {"id_externo": "ticket_98765", "canal": "whatsapp", "historico": []},
+    "opcoes": {"incluir_debug": false, "max_imagens": 3}
+  }'
+```
+
+A resposta traz `acao` (`responder` ou `transferir_humano`), as `mensagens` (texto e imagens prontas para envio), os `faqs_consultados` e as `metricas` (custo, latência, confiança).
+
+---
+
+## Endpoints principais
+
+| Método | Path | Escopo |
+|---|---|---|
+| POST | `/v1/query` | `query` |
+| POST | `/v1/query/stream` | `query` |
+| POST | `/v1/feedback` | `feedback` |
+| GET | `/v1/health` | público |
+| GET | `/v1/stats` | `admin:read` |
+| POST | `/v1/admin/ingest` | `admin:write` |
+| GET/PATCH/DELETE | `/v1/admin/chunks/...` | `admin:read` / `admin:write` |
+| POST | `/v1/admin/reindex` | `admin:write` |
+
+Documentação completa: [`sci-rag-api/docs/api.md`](sci-rag-api/docs/api.md) · [`webhooks.md`](sci-rag-api/docs/webhooks.md) · [`integration-sci.md`](sci-rag-api/docs/integration-sci.md) · [`postman_collection.json`](sci-rag-api/docs/postman_collection.json)
+
+---
+
+## Configuração
+
+Copie `sci-rag-api/.env.example` para `.env` e preencha. **Nunca** comite segredos reais (o `.env` já está no `.gitignore`).
+
+Obrigatórias em produção:
+`POSTGRES_PASSWORD`, `QDRANT_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `ANTHROPIC_API_KEY` **ou** `DEEPSEEK_API_KEY`, `WEBHOOK_SECRET`.
+
+---
+
+## Desenvolvimento
+
+```bash
+cd sci-rag-api
+pip install -e ".[dev]"   # dependências + ferramentas de dev
+pytest                    # roda os testes
+ruff check .              # lint
+```
+
+Benchmark de precisão contra um gabarito:
+
+```bash
+docker compose exec api python scripts/benchmark.py \
+  --gabarito tests/gabarito.json --api-key "$RAG_API_KEY"
 ```
 
 ---
 
-## 🧠 Por que essa arquitetura é "cirúrgica"
+## Observabilidade
 
-A maioria dos sistemas RAG falha porque:
-1. Chunking ingênuo (corta no meio de uma instrução)
-2. Embedding único (perde precisão para termos técnicos como "K300", "esmaecido")
-3. Sem reranking (recall alto, precisão baixa)
-4. LLM "preenche lacunas" com conhecimento geral
+Com `PROMETHEUS_ENABLED=true`, a API expõe `/metrics`. O `docker-compose.yml` inclui Prometheus e Grafana no profile `monitoring`:
 
-O design aqui resolve cada um:
-
-| Problema | Solução adotada |
-|---|---|
-| Chunking ingênuo | **Chunking semântico hierárquico** — parent (FAQ inteiro) + child (subseções) + image (cada print) |
-| Embedding único frágil | **BGE-M3 triplo**: denso (semântico) + esparso (BM25 aprendido) + ColBERT (late interaction para reranking) |
-| Recall vs precisão | **Pipeline 3 estágios**: busca híbrida com RRF → rerank ColBERT → opcional cross-encoder externo |
-| Alucinação | **5 guardrails**: score mínimo, citação obrigatória, NLI checker, out-of-scope, PII scrubber |
-| Termos técnicos perdidos | **Payload com `palavras_chave_exatas`** + busca esparsa garante match literal de "K300", "I012", etc. |
-| Imagens jamais enviadas | **Cada imagem é chunk próprio** com descrição rica vetorizada + campo `quando_enviar` |
-| LLM inventa caminhos de menu | Campos `menus_caminhos` estruturados + prompt do agente proíbe paráfrase |
-
----
-
-## 🚀 Roadmap de Implementação (sugestão de execução)
-
-### Semana 1 — Infraestrutura base
-- [ ] Subir Qdrant via Docker no Oracle Cloud (mesmo VM do Nexiry ou separado)
-- [ ] Configurar MinIO ou Oracle Object Storage para imagens
-- [ ] Criar app Django `rag_engine` no Nexiry
-- [ ] Criar app Django `knowledge_ingestion`
-- [ ] Configurar credenciais Anthropic + DeepSeek
-
-### Semana 2 — Pipeline de ingestão
-- [ ] Instalar dependências pesadas (Docling, BGE-M3, PyMuPDF)
-- [ ] Rodar `ingest_pdf.py` com o PDF anexo (22 FAQs) como POC
-- [ ] Validar manualmente 5-10 chunks gerados: estão corretos? Imagens descritas? Caminhos preservados?
-- [ ] Ajustar prompts 01 e 02 se necessário
-- [ ] Indexar todos os FAQs SCI disponíveis
-
-### Semana 3 — Runtime e integração
-- [ ] Implementar `rag_runtime.py` no app `rag_engine`
-- [ ] Criar tabelas `RAGQueryLog`, `RAGFeedback` no MariaDB
-- [ ] Plugar `rag_engine.responder_mensagem()` no fluxo do `bot_engine` existente
-- [ ] Implementar `media_dispatcher` para enviar imagens via Evolution API
-- [ ] Testar end-to-end com 20 perguntas reais de clientes
-
-### Semana 4 — Tuning e produção
-- [ ] Avaliar 50-100 conversas reais: precisão, taxa de transbordo, satisfação
-- [ ] Ajustar `THRESHOLDS` no runtime
-- [ ] Criar painel admin para revisão humana dos chunks (`revisado_humano: true` dá boost)
-- [ ] Habilitar reranking ColBERT (mais caro, mas precisão sobe ~15%)
-- [ ] Documentar fluxo para equipe
-
----
-
-## 💰 Custos Estimados
-
-### Ingestão (uma vez por documento)
-
-| Item | 22 FAQs (PDF amostra) | 500 FAQs (catálogo completo) |
-|---|---|---|
-| LLM estruturação (Sonnet) | ~$0.50 | ~$10 |
-| Vision LLM (Sonnet) | ~$0.75 | ~$22 |
-| Embedding BGE-M3 (self-hosted) | $0 | $0 |
-| **Total ingestão** | **< $2** | **< $35** |
-
-### Runtime (mensal, supondo 5.000 mensagens/mês)
-
-| Item | Custo |
-|---|---|
-| Query rewriter (DeepSeek) | ~$2/mês |
-| LLM principal mix DeepSeek+Sonnet | ~$15-40/mês |
-| Qdrant (Oracle Cloud VM) | ~$10-30/mês (já existe) |
-| Object storage | ~$1/mês |
-| **Total runtime** | **~$30-75/mês** |
-
-Comparado a 1 atendente humano: **economia de 95%+** com qualidade equivalente em tarefas documentadas.
-
----
-
-## 🔍 Como Validar a Precisão
-
-Crie um conjunto de **30 perguntas-teste** com gabarito. Exemplos:
-
-| Pergunta-teste | FAQ esperado | Imagem esperada |
-|---|---|---|
-| "como marco eliminação K300 no balanço?" | 7085 | img tela balanço |
-| "opção K300/K315 está cinza, oq faço?" | 7085 | img tela balanço |
-| "como gera DRE consolidada com bloco K?" | 7087 | img tela DRE |
-| "erro registro I030 livro R, como resolvo?" | 6950 | img erro + img lançamento |
-| "como exportar J100 J150 consolidado?" | 7078 | img tela exportação |
-| "lançamento K300 com conta participante" | 6693 | img K300 + K310/K315 |
-| "comparar saldos I155 entre ECDs" | 6596 | img comparativo |
-
-Para cada teste, mede:
-- ✅ **Acerto top-1**: o FAQ correto é o primeiro recuperado?
-- ✅ **Imagem correta**: a imagem certa foi anexada?
-- ✅ **Caminho de menu literal**: o LLM copiou exatamente "Relatórios > Balanço patrimonial"?
-- ✅ **Sem alucinação**: o LLM não inventou nenhum campo/menu?
-- ✅ **Transbordo correto**: perguntas fora de escopo geram transferência?
-
-Meta inicial: **>85% de acerto top-1** e **0% de alucinação** (alucinação é critical fail).
-
----
-
-## 🛡️ Por que NÃO usar n8n + Supabase pgvector para este caso
-
-Você tem experiência com n8n e Supabase, então é tentador resolver tudo lá. Mas para este caso específico, **não recomendo** porque:
-
-1. **n8n não suporta bem chunking hierárquico custom** — você precisaria de muitos nodes Code, perdendo o benefício do low-code.
-2. **pgvector não tem busca esparsa nativa** — você perderia o match exato de "K300" que é crítico aqui.
-3. **pgvector não suporta multi-vector (ColBERT)** — perde o reranking de altíssima precisão.
-4. **Vision LLM em batch via n8n é caro e lento** — fazer isso em Python puro com Celery é 5x mais rápido.
-
-n8n continua ótimo para **outras automações** do Nexiry (notificações, integrações, workflows simples). Mas para a **espinha dorsal do RAG cirúrgico**, Python + Qdrant + Django integrado é o caminho.
-
----
-
-## 📌 Próximos Passos Imediatos
-
-1. **Decida o stack** com base nas perguntas que respondi:
-   - Banco vetorial: Qdrant (recomendo) ou alternativa
-   - Imagens: híbrido OCR + Vision LLM (recomendo) ou alternativa
-   - Extração: Docling + Vision LLM (recomendo) ou alternativa
-
-2. **Rode o `ingest_pdf.py`** no PDF que você enviou. Pegue 1 FAQ específico (sugiro o 7085) e inspecione manualmente o JSON gerado. Esse é o seu ponto de validação.
-
-3. **Mostre o output para mim** — posso ajustar os prompts e o pipeline com base no que o LLM produzir na prática.
-
-4. **Depois disso**, integramos no Nexiry e fazemos os testes end-to-end com Evolution API.
-
----
-
-Quer que eu aprofunde alguma parte específica? Por exemplo:
-- Detalhar o app Django `rag_engine` com models, views, signals
-- Mostrar como o `bot_bloqueado_ciclo` se integra com o transbordo do RAG
-- Criar o painel React no frontend Nexiry para revisar/aprovar chunks
-- Adaptar o pipeline para também ingerir Word/Excel/manuais de outros sistemas
-- Mostrar como rodar o BGE-M3 numa GPU pequena (T4) vs CPU pura
+```bash
+docker compose --profile monitoring up -d
+```

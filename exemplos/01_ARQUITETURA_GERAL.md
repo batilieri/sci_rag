@@ -1,8 +1,8 @@
-# Arquitetura RAG de Alta Precisão para Nexiry — Base SCI ECD/ECF
+# Arquitetura RAG de Alta Precisão para SCI — Base SCI ECD/ECF
 
 ## Objetivo
 
-Construir uma base vetorial **cirúrgica** que permita a IA do Nexiry responder dúvidas do sistema SCI Contábil (FAQs, ECD, ECF, Bloco K, etc.) **exatamente como a documentação oficial responde**, incluindo:
+Construir uma base vetorial **cirúrgica** que permita a IA do SCI responder dúvidas do sistema SCI Contábil (FAQs, ECD, ECF, Bloco K, etc.) **exatamente como a documentação oficial responde**, incluindo:
 
 - Caminho exato do menu (`Relatórios > Balanço patrimonial > ...`)
 - Códigos de registro (K300, K310, K315, I012, I050, I155...)
@@ -53,7 +53,7 @@ Construir uma base vetorial **cirúrgica** que permita a IA do Nexiry responder 
   Cliente WhatsApp ──► "Como eliminar K300 no balanço?"
      │
      ▼
-  [Nexiry recebe via Evolution API]
+  [SCI recebe via Evolution API]
      │
      ▼
   [Query Rewriter LLM] ──► reescreve em 2-3 variantes:
@@ -126,7 +126,7 @@ Tamanho alvo dos child chunks: **200-400 tokens** (precisão > recall).
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ Qdrant (Oracle Cloud VM, mesma rede do Nexiry)   │
+│ Qdrant (Oracle Cloud VM, mesma rede do SCI)   │
 ├──────────────────────────────────────────────────┤
 │ Collection: sci_faq_ecd_ecf                       │
 │  ├─ Vector dense (1024)                           │
@@ -145,7 +145,7 @@ Tamanho alvo dos child chunks: **200-400 tokens** (precisão > recall).
             │
             ▼
 ┌──────────────────────────────────────────────────┐
-│ MariaDB (Nexiry existente)                        │
+│ MariaDB (SCI existente)                        │
 ├──────────────────────────────────────────────────┤
 │ Tabela `rag_documents` — metadados mestres        │
 │ Tabela `rag_query_logs` — auditoria de consultas  │
@@ -225,7 +225,7 @@ extracao:
 
 processamento:
   - python 3.11
-  - celery (já usa no Nexiry)
+  - celery (já usa no SCI)
   - redis (já usa)
 
 vetores:
@@ -243,14 +243,14 @@ llm:
   - claude-sonnet-4-5 (via Anthropic API)
 
 orquestracao:
-  - django (já é o backend Nexiry)
+  - django (já é o backend SCI)
   - novo app: rag_engine
   - novo app: knowledge_ingestion
 ```
 
 ---
 
-## Fluxo de Integração no Nexiry
+## Fluxo de Integração no SCI
 
 ```
 ┌─────────────────┐
@@ -262,7 +262,7 @@ orquestracao:
 └────────┬────────┘
          │ webhook
 ┌────────▼────────────────────────────────┐
-│ Nexiry Django                            │
+│ SCI Django                            │
 │  ├─ app: atendimento (existente)         │
 │  ├─ app: bot_engine (existente)          │
 │  │   └─ bot_bloqueado_ciclo lógica       │
