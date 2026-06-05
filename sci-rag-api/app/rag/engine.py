@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -49,6 +50,13 @@ from app.schemas.query import (
 from app.storage import object_storage
 
 logger = get_logger(__name__)
+
+# Marcadores de referência a algo dito antes — sinal forte de pergunta de continuação.
+_ANAPHORA_RE = re.compile(
+    r"\b(essa|esse|isso|esta|este|nela|nele|dela|dele|dela|dali|a[ií]|l[aá]|"
+    r"mesma|mesmo|essas|esses|delas|deles)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
@@ -142,6 +150,15 @@ class RAGEngine:
         rewrite = await rewrite_query(effective_message, payload.conversa.historico)
         variantes = rewrite.variantes or [scrubbed_message]
 
+        # Continuação de conversa ("onde encontro essa tela?"): resolve a referência
+        # usando o turno anterior para que busca E rerank pontuem contra o tópico real,
+        # não contra a mensagem vaga. Sem isso, follow-ups caem no guardrail e transferem.
+        search_query = self._contextualize_for_search(
+            effective_message, payload.conversa.historico
+        )
+        if search_query != effective_message and search_query not in variantes:
+            variantes.insert(0, search_query)
+
         # ---- 4. retrieval ----
         phase = _Phase()
         chunks = await retrieve(
@@ -177,7 +194,7 @@ class RAGEngine:
         # already sorted by retrieval score desc.
         rerank_input = chunks[: settings.rerank_max_candidates]
         reranked = await rerank(
-            effective_message, rerank_input, top_k=settings.rerank_top_k
+            search_query, rerank_input, top_k=settings.rerank_top_k
         )
         phase.stop_rerank()
 
@@ -316,6 +333,32 @@ class RAGEngine:
             "Vou te transferir para um atendente humano que vai conseguir te ajudar melhor "
             "nesse caso. So um momento."
         )
+
+    @staticmethod
+    def _contextualize_for_search(mensagem: str, historico: list[Any]) -> str:
+        """Resolve continuações curtas/anafóricas trazendo a última pergunta do usuário.
+
+        "Onde encontro essa tela?" sozinho não recupera nada; combinado com o turno
+        anterior ("Qual a tela ... saldo negativo de IRPJ na ECF?") a busca e o rerank
+        passam a pontuar contra o tópico real. Só age quando a mensagem parece um
+        follow-up (curta ou com pronome anafórico), para não enviesar troca de assunto.
+        """
+        if not historico:
+            return mensagem
+        palavras = mensagem.split()
+        is_followup = len(palavras) <= 6 or bool(_ANAPHORA_RE.search(mensagem))
+        if not is_followup:
+            return mensagem
+        prev_user = None
+        for m in reversed(historico):
+            role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else None)
+            content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else None)
+            if role == "user" and content and content.strip() != mensagem.strip():
+                prev_user = content.strip()
+                break
+        if not prev_user:
+            return mensagem
+        return f"{prev_user} {mensagem}".strip()
 
     async def _augment_with_client_image(
         self, mensagem: str, imagem_base64: str, imagem_mime: str

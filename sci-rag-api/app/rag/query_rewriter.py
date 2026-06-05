@@ -20,7 +20,7 @@ class RewriteResult:
     termos_chave: list[str] = field(default_factory=list)
 
 
-def _format_history(historico: list[MensagemHistorico], max_turns: int = 6) -> str:
+def _format_history(historico: list[MensagemHistorico], max_turns: int = 20) -> str:
     recent = historico[-max_turns:]
     if not recent:
         return "(sem historico recente)"

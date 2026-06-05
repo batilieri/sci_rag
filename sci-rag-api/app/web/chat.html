@@ -191,7 +191,7 @@ async function send() {
   const payload = {
     mensagem: msgText,
     cliente: { id_externo: clienteId },
-    conversa: { id_externo: conversaId, canal: 'web', historico: historico.slice(-10) },
+    conversa: { id_externo: conversaId, canal: 'web', historico: historico.slice(-20) },
     opcoes: { incluir_debug: debugEl.checked, max_imagens: 3 }
   };
   if (attached) { payload.imagem_base64 = attached.base64; payload.imagem_mime = attached.mime; }

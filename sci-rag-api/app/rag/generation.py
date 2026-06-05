@@ -89,7 +89,7 @@ def _provider_configured(backend: str) -> bool:
     return bool(settings.anthropic_api_key) if backend == "claude" else bool(settings.deepseek_api_key)
 
 
-def _format_history(historico: list[MensagemHistorico], max_turns: int = 8) -> str:
+def _format_history(historico: list[MensagemHistorico], max_turns: int = 20) -> str:
     recent = historico[-max_turns:]
     if not recent:
         return "(sem historico)"
