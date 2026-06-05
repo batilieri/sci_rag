@@ -47,6 +47,10 @@ class QueryRequest(BaseModel):
     cliente: ClienteContexto
     conversa: ConversaContexto
     opcoes: OpcoesQuery = Field(default_factory=OpcoesQuery)
+    # Print/foto que o cliente enviou (base64, sem o prefixo data:). Quando presente,
+    # o Claude "lê" a imagem (OCR + descrição) e o conteudo entra na busca e na resposta.
+    imagem_base64: str | None = Field(None, description="Imagem do cliente em base64 (opcional)")
+    imagem_mime: str = Field("image/png", description="MIME da imagem enviada")
 
     @field_validator("mensagem")
     @classmethod

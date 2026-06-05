@@ -29,7 +29,9 @@ async def describe_image(
             user_text=prompt,
             image_bytes=image_bytes,
             image_mime=image_mime,
-            max_tokens=2200,
+            # Telas densas (tabelas, planos de contas) geram muito OCR; 2200 tokens
+            # truncava o JSON e quebrava o parse. 4096 cobre as telas cheias.
+            max_tokens=4096,
             temperature=0.0,
         )
         data = parse_json_or_raise(resp.text)

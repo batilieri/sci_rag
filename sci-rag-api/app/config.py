@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Default answering provider when modelo_preferido=auto. "deepseek" keeps the
     # whole pipeline on DeepSeek; "claude" prefers Claude when its key is present.
     llm_primary_provider: Literal["deepseek", "claude"] = "deepseek"
+    # Quando ambos os provedores estão configurados, o roteador pode escalar
+    # perguntas difíceis (texto longo, histórico grande, score baixo) para o Claude.
+    # Mantenha False para travar 100% do TEXTO no DeepSeek e usar o Claude apenas
+    # para visão/ingestão (mais barato). True melhora respostas difíceis com custo maior.
+    llm_allow_claude_escalation: bool = False
     # Per-request timeout (seconds) for any LLM call.
     llm_timeout_seconds: float = 60.0
     # Total attempts per call (1 = no retry). Retries cover 429 / timeouts / 5xx.

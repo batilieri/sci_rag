@@ -63,9 +63,13 @@ def _pick_model(
     if not has_deepseek:
         return "claude"
 
-    # Both configured: route by the operator's chosen primary, escalating the
-    # harder/lower-confidence queries to Claude.
-    if pergunta_len > 350 or historico_len > 8 or top_score < settings.grey_zone_high:
+    # Both configured: route by the operator's chosen primary. Escalation of the
+    # harder/lower-confidence queries to Claude only happens when explicitly enabled
+    # — otherwise text stays on the primary (DeepSeek) and Claude is reserved for
+    # vision/ingestion.
+    if settings.llm_allow_claude_escalation and (
+        pergunta_len > 350 or historico_len > 8 or top_score < settings.grey_zone_high
+    ):
         return "claude"
     return settings.llm_primary_provider
 

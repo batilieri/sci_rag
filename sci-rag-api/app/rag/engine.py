@@ -15,6 +15,8 @@ Flow (per the spec):
 
 from __future__ import annotations
 
+import base64
+import binascii
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,6 +31,7 @@ from app.core.webhooks import send_webhook_now
 from app.models.image_asset import ImageAsset
 from app.models.query_log import QueryLog
 from app.rag import guardrails
+from app.ingestion.vision_describer import describe_image
 from app.rag.generation import generate
 from app.rag.query_rewriter import rewrite_query
 from app.rag.reranker import rerank
@@ -106,8 +109,17 @@ class RAGEngine:
             await self._dispatch_transfer_webhook(response, payload)
             return response
 
+        # ---- 1a. imagem do cliente: o Claude lê o print (OCR + descrição) e o
+        # conteúdo extraído passa a fazer parte da pergunta na busca e na geração.
+        effective_message = scrubbed_message
+        generation_message = scrubbed_message
+        if payload.imagem_base64:
+            effective_message, generation_message = await self._augment_with_client_image(
+                scrubbed_message, payload.imagem_base64, payload.imagem_mime
+            )
+
         # ---- 1b. saudação/smalltalk: responde na hora, sem rodar RAG ----
-        if guardrails.detect_greeting(scrubbed_message):
+        if not payload.imagem_base64 and guardrails.detect_greeting(scrubbed_message):
             response = self._build_greeting_response(
                 request_id=request_id,
                 elapsed_ms=self._elapsed_ms(request_start),
@@ -115,8 +127,8 @@ class RAGEngine:
             await self._persist_log(response, payload, api_key_id, cache_key, top_score_busca=None)
             return response
 
-        # ---- 2. cache ----
-        if not payload.opcoes.bypass_cache:
+        # ---- 2. cache (pulado quando há imagem: a resposta depende do print) ----
+        if not payload.opcoes.bypass_cache and not payload.imagem_base64:
             cached = await self.cache.get(cache_key)
             if cached:
                 cached["request_id"] = request_id
@@ -127,7 +139,7 @@ class RAGEngine:
                 return response
 
         # ---- 3. query rewriting ----
-        rewrite = await rewrite_query(scrubbed_message, payload.conversa.historico)
+        rewrite = await rewrite_query(effective_message, payload.conversa.historico)
         variantes = rewrite.variantes or [scrubbed_message]
 
         # ---- 4. retrieval ----
@@ -165,7 +177,7 @@ class RAGEngine:
         # already sorted by retrieval score desc.
         rerank_input = chunks[: settings.rerank_max_candidates]
         reranked = await rerank(
-            scrubbed_message, rerank_input, top_k=settings.rerank_top_k
+            effective_message, rerank_input, top_k=settings.rerank_top_k
         )
         phase.stop_rerank()
 
@@ -198,7 +210,7 @@ class RAGEngine:
 
         # ---- 7. generation ----
         gen = await generate(
-            pergunta=scrubbed_message,
+            pergunta=generation_message,
             cliente=payload.cliente,
             historico=payload.conversa.historico,
             chunks=reranked,
@@ -304,6 +316,51 @@ class RAGEngine:
             "Vou te transferir para um atendente humano que vai conseguir te ajudar melhor "
             "nesse caso. So um momento."
         )
+
+    async def _augment_with_client_image(
+        self, mensagem: str, imagem_base64: str, imagem_mime: str
+    ) -> tuple[str, str]:
+        """Lê o print do cliente (Claude vision) e devolve (texto_busca, texto_geracao).
+
+        - texto_busca: curto (pergunta + descrição curta + registros) para a busca e o
+          reranker, que perdem qualidade com queries longas.
+        - texto_geracao: completo (com OCR) para o LLM responder com precisão.
+        Em caso de falha, devolve a mensagem original nos dois.
+        """
+        raw = imagem_base64.strip()
+        if "," in raw and raw.lstrip().startswith("data:"):
+            raw = raw.split(",", 1)[1]  # remove prefixo data:image/png;base64,
+        try:
+            img_bytes = base64.b64decode(raw, validate=True)
+        except (binascii.Error, ValueError):
+            logger.warning("client_image_decode_failed")
+            return mensagem, mensagem
+        try:
+            desc = await describe_image(img_bytes, faq_context=mensagem, image_mime=imagem_mime)
+        except Exception as exc:
+            logger.warning("client_image_describe_failed", error=str(exc))
+            return mensagem, mensagem
+
+        descricao = desc.get("descricao_vision_llm") or desc.get("descricao_curta") or ""
+        curta = desc.get("descricao_curta") or descricao
+        ocr = (desc.get("ocr_texto_completo") or "")[:1500]
+        registros = ", ".join(desc.get("registros_sped_visiveis") or [])
+
+        busca = "\n".join(
+            p for p in [mensagem, curta, (f"Registros: {registros}" if registros else "")] if p
+        ).strip()
+        geracao = "\n".join(
+            p
+            for p in [
+                mensagem,
+                "\n[Imagem enviada pelo cliente — conteudo lido automaticamente]",
+                f"Descricao da tela: {descricao}" if descricao else "",
+                f"Registros SPED visiveis: {registros}" if registros else "",
+                f"Texto na tela (OCR): {ocr}" if ocr else "",
+            ]
+            if p
+        ).strip()
+        return busca, geracao
 
     def _build_greeting_response(self, *, request_id: str, elapsed_ms: int) -> QueryResponse:
         """Resposta instantânea para saudações, sem custo de RAG/LLM."""
