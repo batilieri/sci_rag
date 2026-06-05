@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SCI RAG — Ensinar a IA</title>
+<style>
+  :root {
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449;
+    --user:#2563eb; --bot:#334155; --text:#e2e8f0; --muted:#94a3b8;
+    --accent:#38bdf8; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+  header { padding:12px 16px; background:var(--panel); border-bottom:1px solid #00000040;
+           display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; color:var(--accent); }
+  header a { color:var(--muted); font-size:12px; text-decoration:none; }
+  header .spacer { flex:1; }
+  header input { background:var(--panel2); border:1px solid #00000040; color:var(--text);
+                 padding:6px 10px; border-radius:6px; font-size:12px; width:240px; }
+  header label { font-size:11px; color:var(--muted); display:flex; gap:6px; align-items:center; }
+  #chat { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:14px; }
+  .row { display:flex; } .row.user { justify-content:flex-end; }
+  .bubble { max-width:76%; padding:10px 14px; border-radius:14px; line-height:1.5;
+            white-space:pre-wrap; word-wrap:break-word; font-size:14px; }
+  .user .bubble { background:var(--user); color:#fff; border-bottom-right-radius:4px; }
+  .bot .bubble { background:var(--bot); border-bottom-left-radius:4px; }
+  .typing { color:var(--muted); font-style:italic; font-size:13px; }
+  .hint { font-size:11px; color:var(--muted); padding:0 20px 8px; }
+  /* preview card */
+  .card { background:var(--panel2); border:1px solid #00000040; border-radius:12px; padding:14px 16px;
+          max-width:76%; }
+  .card h3 { margin:0 0 4px; font-size:15px; color:var(--accent); }
+  .card .sub { font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .card .sec { margin:10px 0; }
+  .card .sec .t { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .card .sec .body { font-size:13.5px; line-height:1.5; white-space:pre-wrap; margin-top:3px; }
+  .tags { margin-top:8px; }
+  .pill { display:inline-block; background:#00000030; padding:2px 9px; border-radius:10px;
+          margin:2px 4px 2px 0; font-size:11.5px; }
+  .pill.q { background:#0ea5e920; color:var(--accent); }
+  .actions { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
+  .actions button { padding:8px 16px; border-radius:8px; font-size:13px; font-weight:700; border:none; cursor:pointer; }
+  .btn-save { background:var(--ok); color:#04240f; }
+  .btn-redo { background:#475569; color:#fff; }
+  .bar { height:9px; background:#00000040; border-radius:6px; overflow:hidden; margin:8px 0; }
+  .bar > div { height:100%; background:var(--accent); width:0%; transition:width .4s; }
+  footer { padding:14px 16px; background:var(--panel); border-top:1px solid #00000040; display:flex; gap:10px; }
+  #msg { flex:1; background:var(--panel2); border:1px solid #00000040; color:var(--text);
+         padding:12px 14px; border-radius:10px; font-size:14px; resize:none; height:48px; font-family:inherit; }
+  footer button { background:var(--accent); color:#04293a; border:none; padding:0 22px; border-radius:10px;
+                  font-weight:700; cursor:pointer; font-size:14px; }
+  footer button:disabled { opacity:.5; cursor:not-allowed; }
+  #pdfbar { display:none; padding:6px 20px; background:var(--panel); align-items:center; gap:10px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🧠 Ensinar a IA</h1>
+    <a href="/chat">testar no chat →</a>
+    <a href="/admin">enviar PDF (avançado) →</a>
+    <div class="spacer"></div>
+    <label>Chave de acesso
+      <input id="apikey" type="password" placeholder="rag_live_..." />
+    </label>
+  </header>
+
+  <div id="chat"></div>
+  <div class="hint">Descreva um problema/erro e como resolver — pode escrever do seu jeito. A IA organiza, mostra uma prévia e só salva quando você confirmar. Para um manual inteiro, use 📎 (PDF).</div>
+
+  <div id="pdfbar">
+    <span id="pdfname" style="font-size:13px;"></span>
+    <span style="font-size:12px;color:var(--muted);">— vou processar este PDF e indexar na base</span>
+    <button id="pdfclear" style="background:#475569;color:#fff;padding:4px 10px;border:none;border-radius:6px;font-size:12px;cursor:pointer;">remover</button>
+  </div>
+
+  <footer>
+    <input type="file" id="file" accept="application/pdf" style="display:none" />
+    <button id="attach" title="Anexar PDF" style="background:#475569;color:#fff;padding:0 16px;">📎</button>
+    <textarea id="msg" placeholder="Ex.: Quando dá erro X na ECF, a gente resolve assim... (Enter envia)"></textarea>
+    <button id="send">Enviar</button>
+  </footer>
+
+<script>
+const API = location.origin;
+const chat = document.getElementById('chat');
+const msgEl = document.getElementById('msg');
+const sendBtn = document.getElementById('send');
+const apikeyEl = document.getElementById('apikey');
+
+apikeyEl.value = localStorage.getItem('sci_admin_key') || '';
+apikeyEl.onchange = () => localStorage.setItem('sci_admin_key', apikeyEl.value.trim());
+
+// ---------- helpers ----------
+function el(tag, cls, html) { const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
+function escape(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function addUser(text){ const r=el('div','row user'); r.appendChild(el('div','bubble',escape(text))); chat.appendChild(r); chat.scrollTop=chat.scrollHeight; }
+function addBot(text){ const r=el('div','row bot'); const b=el('div','bubble',escape(text)); r.appendChild(b); chat.appendChild(r); chat.scrollTop=chat.scrollHeight; return b; }
+function typing(text){ const r=el('div','row bot typing'); r.appendChild(el('div','bubble',text||'pensando…')); chat.appendChild(r); chat.scrollTop=chat.scrollHeight; return r; }
+
+// ---------- state ----------
+let relato = '';        // tudo que o atendente descreveu (acumulado p/ a IA reavaliar)
+let currentFaq = null;  // FAQ pronto aguardando "Salvar"
+
+// ---------- PDF attach ----------
+const fileEl = document.getElementById('file');
+const pdfbar = document.getElementById('pdfbar');
+const pdfname = document.getElementById('pdfname');
+let pdf = null;
+document.getElementById('attach').onclick = () => fileEl.click();
+fileEl.onchange = () => {
+  const f = fileEl.files[0]; if(!f) return;
+  if(f.type !== 'application/pdf'){ alert('Envie um arquivo .pdf'); return; }
+  pdf = f; pdfname.textContent = '📄 ' + f.name + ' (' + (f.size/1048576).toFixed(1) + ' MB)';
+  pdfbar.style.display = 'flex';
+};
+document.getElementById('pdfclear').onclick = () => { pdf=null; pdfbar.style.display='none'; fileEl.value=''; };
+
+// ---------- send ----------
+function key(){ const k=apikeyEl.value.trim(); if(!k){ alert('Informe a chave de acesso (admin:write).'); } return k; }
+
+async function send(){
+  const k = key(); if(!k) return;
+  localStorage.setItem('sci_admin_key', k);
+  if(pdf){ return sendPdf(k); }
+
+  const text = msgEl.value.trim();
+  if(!text) return;
+  addUser(text);
+  msgEl.value = '';
+  relato = relato ? (relato + '\n' + text) : text;
+  currentFaq = null;
+  sendBtn.disabled = true;
+  const t = typing('organizando a informação…');
+  try {
+    const r = await fetch(API + '/v1/admin/knowledge/draft', {
+      method:'POST', headers:{'Content-Type':'application/json','X-API-Key':k},
+      body: JSON.stringify({ relato })
+    });
+    const data = await r.json();
+    t.remove();
+    if(!r.ok){ addBot('⚠️ Erro '+r.status+': '+(data.detail?.mensagem || data.mensagem || JSON.stringify(data))); sendBtn.disabled=false; return; }
+    if(data.status === 'incompleto'){
+      addBot('Quase lá! Pra ficar uma resposta precisa, me responde:');
+      const b = addBot('');
+      const wrap = el('div'); (data.perguntas||[]).forEach(q => wrap.appendChild(el('div','pill q','• '+escape(q)))); b.appendChild(wrap);
+    } else {
+      currentFaq = data.faq;
+      renderPreview(data.faq, data.resumo);
+    }
+  } catch(e){ t.remove(); addBot('⚠️ Falha de rede: '+e.message); }
+  sendBtn.disabled = false; msgEl.focus();
+}
+
+function renderPreview(faq, resumo){
+  const r = el('div','row bot');
+  const card = el('div','card');
+  card.appendChild(el('h3', null, '✅ Pronto para salvar: ' + escape(faq.titulo||'(sem título)')));
+  if(resumo) card.appendChild(el('div','sub', escape(resumo)));
+
+  (faq.secoes||[]).forEach(s => {
+    const sec = el('div','sec');
+    sec.appendChild(el('div','t', escape(s.titulo_secao||'')));
+    sec.appendChild(el('div','body', escape(s.texto_original||'')));
+    card.appendChild(sec);
+  });
+
+  const tags = el('div','tags');
+  if(faq.categoria_principal) tags.appendChild(el('span','pill', '📂 '+escape(faq.categoria_principal)));
+  (faq.registros_sped_mencionados||[]).forEach(x => tags.appendChild(el('span','pill', escape(x))));
+  (faq.menus_caminhos||[]).forEach(x => tags.appendChild(el('span','pill', '🧭 '+escape(x))));
+  card.appendChild(tags);
+
+  if((faq.perguntas_exemplo||[]).length){
+    const pe = el('div','sec');
+    pe.appendChild(el('div','t','A IA vai reconhecer perguntas como'));
+    const w = el('div'); faq.perguntas_exemplo.forEach(q => w.appendChild(el('div','pill q','“'+escape(q)+'”'))); pe.appendChild(w);
+    card.appendChild(pe);
+  }
+
+  const actions = el('div','actions');
+  const save = el('button','btn-save','✅ Salvar na base');
+  const redo = el('button','btn-redo','✏️ Ajustar');
+  save.onclick = () => doSave(save, redo);
+  redo.onclick = () => { addBot('Sem problema. Me diga o que mudar ou complete a informação que eu refaço.'); msgEl.focus(); };
+  actions.appendChild(save); actions.appendChild(redo);
+  card.appendChild(actions);
+
+  r.appendChild(card); chat.appendChild(r); chat.scrollTop = chat.scrollHeight;
+}
+
+async function doSave(saveBtn, redoBtn){
+  const k = key(); if(!k || !currentFaq) return;
+  saveBtn.disabled = true; redoBtn.disabled = true; saveBtn.textContent = 'salvando…';
+  try {
+    const r = await fetch(API + '/v1/admin/knowledge/save', {
+      method:'POST', headers:{'Content-Type':'application/json','X-API-Key':k},
+      body: JSON.stringify({ faq: currentFaq })
+    });
+    const data = await r.json();
+    if(!r.ok){ saveBtn.disabled=false; redoBtn.disabled=false; saveBtn.textContent='✅ Salvar na base';
+      addBot('⚠️ Não consegui salvar ('+r.status+'): '+(data.detail?.mensagem||JSON.stringify(data))); return; }
+    saveBtn.textContent = '✅ Salvo';
+    addBot('Salvo na base! (id '+data.faq_id+', '+data.chunks_criados+' trecho(s) indexados). Já pode testar no chat. Quer me ensinar outra coisa?');
+    relato = ''; currentFaq = null;
+  } catch(e){ saveBtn.disabled=false; redoBtn.disabled=false; saveBtn.textContent='✅ Salvar na base'; addBot('⚠️ Falha de rede: '+e.message); }
+}
+
+// ---------- PDF ingest ----------
+async function sendPdf(k){
+  const f = pdf; pdf=null; pdfbar.style.display='none'; fileEl.value='';
+  addUser('📄 '+f.name);
+  const b = addBot('Enviando o PDF…');
+  const bar = el('div','bar'); const fill=el('div'); bar.appendChild(fill); b.appendChild(bar);
+  const fd = new FormData(); fd.append('file', f, f.name);
+  let job;
+  try {
+    const r = await fetch(API + '/v1/admin/ingest', { method:'POST', headers:{'X-API-Key':k}, body:fd });
+    job = await r.json();
+    if(!r.ok){ b.firstChild ? b.childNodes[0].nodeValue='⚠️ Erro '+r.status+': '+(job.detail?.mensagem||job.mensagem||'') : null; return; }
+  } catch(e){ b.childNodes[0].nodeValue='⚠️ Falha de rede: '+e.message; return; }
+  b.childNodes[0].nodeValue = 'Processando o PDF (a IA lê o texto e as imagens)…';
+  pollPdf(job.job_id, k, b, fill);
+}
+async function pollPdf(jobId, k, b, fill){
+  try {
+    const r = await fetch(API + '/v1/admin/ingest/'+jobId, { headers:{'X-API-Key':k} });
+    const j = await r.json();
+    const pct = (j.progress && j.progress.progresso_pct) || 0;
+    fill.style.width = Math.max(4,pct)+'%';
+    const s = j.summary||{};
+    if(['completed','failed','partial'].includes(j.status)){
+      b.childNodes[0].nodeValue = (j.status==='completed'?'✅ ':j.status==='partial'?'⚠️ ':'❌ ') +
+        'PDF processado — '+(s.faqs_ingeridos??0)+' FAQ(s), '+(s.chunks_upsertados??0)+' trecho(s) na base. Teste no chat!';
+      return;
+    }
+    b.childNodes[0].nodeValue = 'Processando… '+pct.toFixed(0)+'% ('+(j.progress?j.progress.phase:'')+')';
+    setTimeout(()=>pollPdf(jobId,k,b,fill), 2500);
+  } catch(e){ setTimeout(()=>pollPdf(jobId,k,b,fill), 4000); }
+}
+
+sendBtn.onclick = send;
+msgEl.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
+addBot('Olá! Eu aprendo com você. Me conte um problema/erro do sistema e como resolvê-lo — pode escrever do seu jeito que eu organizo, mostro a prévia e você confirma. Ou clique em 📎 para enviar um PDF.');
+msgEl.focus();
+</script>
+</body>
+</html>

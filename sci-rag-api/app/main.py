@@ -114,6 +114,11 @@ def create_app() -> FastAPI:
         html = (Path(__file__).parent / "web" / "admin.html").read_text(encoding="utf-8")
         return HTMLResponse(html)
 
+    @app.get("/ensinar", include_in_schema=False)
+    async def ensinar_page() -> HTMLResponse:
+        html = (Path(__file__).parent / "web" / "ensinar.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon() -> Response:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
