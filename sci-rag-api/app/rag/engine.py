@@ -15,6 +15,7 @@ Flow (per the spec):
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import re
@@ -117,17 +118,20 @@ class RAGEngine:
             await self._dispatch_transfer_webhook(response, payload)
             return response
 
-        # ---- 1a. imagem do cliente: o Claude lê o print (OCR + descrição) e o
-        # conteúdo extraído passa a fazer parte da pergunta na busca e na geração.
+        # ---- 1a. anexo do cliente (imagem/PDF/TXT): a IA LÊ o arquivo só para entender
+        # a pergunta e buscar nas informações já salvas — o anexo NÃO é gravado na base.
+        anexo_b64 = payload.anexo_base64 or payload.imagem_base64
+        anexo_mime = payload.anexo_mime or (payload.imagem_mime if payload.imagem_base64 else None)
+        has_attachment = bool(anexo_b64)
         effective_message = scrubbed_message
         generation_message = scrubbed_message
-        if payload.imagem_base64:
-            effective_message, generation_message = await self._augment_with_client_image(
-                scrubbed_message, payload.imagem_base64, payload.imagem_mime
+        if has_attachment:
+            effective_message, generation_message = await self._read_attachment(
+                scrubbed_message, anexo_b64, anexo_mime, payload.anexo_nome
             )
 
         # ---- 1b. saudação/smalltalk: responde na hora, sem rodar RAG ----
-        if not payload.imagem_base64 and guardrails.detect_greeting(scrubbed_message):
+        if not has_attachment and guardrails.detect_greeting(scrubbed_message):
             response = self._build_greeting_response(
                 request_id=request_id,
                 elapsed_ms=self._elapsed_ms(request_start),
@@ -135,8 +139,8 @@ class RAGEngine:
             await self._persist_log(response, payload, api_key_id, cache_key, top_score_busca=None)
             return response
 
-        # ---- 2. cache (pulado quando há imagem: a resposta depende do print) ----
-        if not payload.opcoes.bypass_cache and not payload.imagem_base64:
+        # ---- 2. cache (pulado quando há anexo: a resposta depende do arquivo) ----
+        if not payload.opcoes.bypass_cache and not has_attachment:
             cached = await self.cache.get(cache_key)
             if cached:
                 cached["request_id"] = request_id
@@ -360,35 +364,62 @@ class RAGEngine:
             return mensagem
         return f"{prev_user} {mensagem}".strip()
 
-    async def _augment_with_client_image(
-        self, mensagem: str, imagem_base64: str, imagem_mime: str
-    ) -> tuple[str, str]:
-        """Lê o print do cliente (Claude vision) e devolve (texto_busca, texto_geracao).
+    # Limite do anexo lido no chat (one-off). Acima disso, ignora e segue só com texto.
+    _MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
-        - texto_busca: curto (pergunta + descrição curta + registros) para a busca e o
-          reranker, que perdem qualidade com queries longas.
-        - texto_geracao: completo (com OCR) para o LLM responder com precisão.
-        Em caso de falha, devolve a mensagem original nos dois.
+    async def _read_attachment(
+        self, mensagem: str, anexo_base64: str, anexo_mime: str | None, anexo_nome: str | None
+    ) -> tuple[str, str]:
+        """Lê o anexo (imagem/PDF/TXT) e devolve (texto_busca, texto_geracao).
+
+        O conteúdo entra na pergunta para buscar nas informações JÁ SALVAS — o arquivo
+        não é gravado na base. texto_busca é curto (bom para o reranker); texto_geracao
+        carrega o conteúdo completo. Em qualquer falha, segue só com a mensagem.
         """
-        raw = imagem_base64.strip()
+        raw = anexo_base64.strip()
         if "," in raw and raw.lstrip().startswith("data:"):
-            raw = raw.split(",", 1)[1]  # remove prefixo data:image/png;base64,
+            raw = raw.split(",", 1)[1]
         try:
-            img_bytes = base64.b64decode(raw, validate=True)
+            data = base64.b64decode(raw, validate=True)
         except (binascii.Error, ValueError):
-            logger.warning("client_image_decode_failed")
+            logger.warning("attachment_decode_failed")
             return mensagem, mensagem
+        if len(data) > self._MAX_ATTACHMENT_BYTES:
+            logger.warning("attachment_too_large", bytes=len(data))
+            return mensagem, mensagem
+
+        mime = (anexo_mime or "").lower()
+        nome = (anexo_nome or "").lower()
+        if mime.startswith("image/") or nome.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+            return await self._read_image_attachment(mensagem, data, mime or "image/png")
+        if mime == "application/pdf" or nome.endswith(".pdf"):
+            return await self._read_pdf_attachment(mensagem, data)
+        if mime.startswith("text/") or nome.endswith((".txt", ".csv", ".md", ".log")):
+            return self._read_text_attachment(mensagem, data, anexo_nome)
+        # Tipo desconhecido: tenta como texto; se não der, segue só com a mensagem.
         try:
-            desc = await describe_image(img_bytes, faq_context=mensagem, image_mime=imagem_mime)
+            from app.ingestion.attachment_reader import read_txt
+
+            texto = read_txt(data)
+            if texto.strip():
+                return self._build_attachment_query(mensagem, texto, anexo_nome or "arquivo")
+        except Exception:
+            pass
+        logger.warning("attachment_type_unsupported", mime=mime, nome=nome)
+        return mensagem, mensagem
+
+    async def _read_image_attachment(
+        self, mensagem: str, img_bytes: bytes, image_mime: str
+    ) -> tuple[str, str]:
+        try:
+            desc = await describe_image(img_bytes, faq_context=mensagem, image_mime=image_mime)
         except Exception as exc:
             logger.warning("client_image_describe_failed", error=str(exc))
             return mensagem, mensagem
-
         descricao = desc.get("descricao_vision_llm") or desc.get("descricao_curta") or ""
         curta = desc.get("descricao_curta") or descricao
         ocr = (desc.get("ocr_texto_completo") or "")[:1500]
         registros = ", ".join(desc.get("registros_sped_visiveis") or [])
-
         busca = "\n".join(
             p for p in [mensagem, curta, (f"Registros: {registros}" if registros else "")] if p
         ).strip()
@@ -402,6 +433,58 @@ class RAGEngine:
                 f"Texto na tela (OCR): {ocr}" if ocr else "",
             ]
             if p
+        ).strip()
+        return busca, geracao
+
+    async def _read_pdf_attachment(self, mensagem: str, pdf_bytes: bytes) -> tuple[str, str]:
+        from app.ingestion.attachment_reader import read_pdf
+
+        try:
+            texto, imagens = await asyncio.to_thread(read_pdf, pdf_bytes)
+        except Exception as exc:
+            logger.warning("client_pdf_read_failed", error=str(exc))
+            return mensagem, mensagem
+        # PDF escaneado (pouco texto): tenta OCR via visão na primeira imagem.
+        if len(texto) < 200 and imagens:
+            try:
+                desc = await describe_image(imagens[0], faq_context=mensagem)
+                texto = (texto + "\n" + (desc.get("ocr_texto_completo") or "")).strip()
+            except Exception:
+                pass
+        if not texto.strip():
+            return mensagem, mensagem
+        return self._build_attachment_query(mensagem, texto, "PDF")
+
+    def _read_text_attachment(
+        self, mensagem: str, data: bytes, nome: str | None
+    ) -> tuple[str, str]:
+        from app.ingestion.attachment_reader import read_txt
+
+        texto = read_txt(data)
+        if not texto.strip():
+            return mensagem, mensagem
+        return self._build_attachment_query(mensagem, texto, nome or "TXT")
+
+    @staticmethod
+    def _build_attachment_query(mensagem: str, texto: str, rotulo: str) -> tuple[str, str]:
+        """Monta (busca curta, geração completa) a partir do texto de um PDF/TXT.
+
+        A busca lidera com o CONTEÚDO limpo do documento (o tópico real), removendo
+        ruído de cabeçalho (linhas "Fonte:"/URL), pois a pergunta costuma ser meta
+        ("o que diz esse arquivo?") e sozinha não recupera nada.
+        """
+        texto = texto.strip()
+        linhas_uteis = [
+            ln.strip()
+            for ln in texto.splitlines()
+            if ln.strip()
+            and not ln.strip().lower().startswith("fonte")
+            and "http" not in ln.lower()
+        ]
+        limpo = " ".join(linhas_uteis) or texto
+        busca = f"{limpo[:450]}\n{mensagem}".strip()
+        geracao = (
+            f"{mensagem}\n\n[Conteudo do arquivo {rotulo} enviado pelo cliente]\n{texto[:6000]}"
         ).strip()
         return busca, geracao
 

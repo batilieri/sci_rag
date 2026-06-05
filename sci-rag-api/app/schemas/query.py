@@ -51,6 +51,11 @@ class QueryRequest(BaseModel):
     # o Claude "lê" a imagem (OCR + descrição) e o conteudo entra na busca e na resposta.
     imagem_base64: str | None = Field(None, description="Imagem do cliente em base64 (opcional)")
     imagem_mime: str = Field("image/png", description="MIME da imagem enviada")
+    # Anexo genérico do chat: imagem, PDF ou TXT (base64). A IA LÊ o arquivo só para
+    # entender a pergunta e buscar nas informações já salvas — NÃO grava na base.
+    anexo_base64: str | None = Field(None, description="Anexo do chat em base64 (imagem/pdf/txt)")
+    anexo_mime: str | None = Field(None, description="MIME do anexo (ex: application/pdf, text/plain)")
+    anexo_nome: str | None = Field(None, max_length=255, description="Nome do arquivo anexado")
 
     @field_validator("mensagem")
     @classmethod

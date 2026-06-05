@@ -72,15 +72,16 @@
   <div class="hint">Dica: peça "me mostra a tela" ou "manda o print" para a IA enviar imagens. Ex.: <em>"Como vincular o saldo negativo de IRPJ na ECF? Me mostra a tela"</em></div>
 
   <div id="preview-bar" style="display:none; padding:6px 20px; background:var(--panel); align-items:center; gap:10px;">
-    <img id="preview-img" style="height:46px; border-radius:6px; border:1px solid #00000040;" />
-    <span style="font-size:12px; color:var(--muted);">imagem anexada (a IA vai ler)</span>
+    <img id="preview-img" style="height:46px; border-radius:6px; border:1px solid #00000040; display:none;" />
+    <span id="preview-name" style="font-size:13px; color:var(--text);"></span>
+    <span style="font-size:12px; color:var(--muted);">— a IA vai ler para responder com a base</span>
     <button id="preview-clear" style="background:#475569; color:#fff; padding:4px 10px; font-size:12px;">remover</button>
   </div>
 
   <footer>
-    <input type="file" id="file" accept="image/*" style="display:none" />
-    <button id="attach" title="Anexar print" style="background:#475569; color:#fff; padding:0 16px;">📎</button>
-    <textarea id="msg" placeholder="Digite a pergunta... ou cole/anexe um print (Enter envia)"></textarea>
+    <input type="file" id="file" accept="image/*,application/pdf,text/plain,.txt,.csv,.md,.log" style="display:none" />
+    <button id="attach" title="Anexar imagem, PDF ou TXT" style="background:#475569; color:#fff; padding:0 16px;">📎</button>
+    <textarea id="msg" placeholder="Digite a pergunta... ou anexe imagem/PDF/TXT (Enter envia)"></textarea>
     <button id="send">Enviar</button>
   </footer>
 
@@ -96,28 +97,36 @@ const debugEl = document.getElementById('debug');
 apikeyEl.value = localStorage.getItem('sci_apikey') || 'rag_live_teste_validacao_123';
 apikeyEl.onchange = () => localStorage.setItem('sci_apikey', apikeyEl.value.trim());
 
-// ---- anexo de imagem (Parte B: a IA le o print do cliente) ----
+// ---- anexo (imagem/PDF/TXT): a IA LE o arquivo e busca na base ja salva ----
 const fileEl = document.getElementById('file');
 const attachBtn = document.getElementById('attach');
 const previewBar = document.getElementById('preview-bar');
 const previewImg = document.getElementById('preview-img');
-let attached = null; // { dataUrl, base64, mime }
+const previewName = document.getElementById('preview-name');
+let attached = null; // { dataUrl, base64, mime, name, isImage }
 
-function setAttached(dataUrl) {
-  const mime = (dataUrl.match(/^data:([^;]+);/) || [])[1] || 'image/png';
-  attached = { dataUrl, base64: dataUrl.split(',')[1], mime };
-  previewImg.src = dataUrl; previewBar.style.display = 'flex';
-}
-function clearAttached() { attached = null; previewBar.style.display = 'none'; fileEl.value = ''; }
 function fileToDataUrl(file) {
   return new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
 }
+async function setAttachedFile(file) {
+  if (!file) return;
+  if (file.size > 10 * 1048576) { alert('Arquivo muito grande (máx 10MB).'); return; }
+  const dataUrl = await fileToDataUrl(file);
+  const mime = (dataUrl.match(/^data:([^;]+);/) || [])[1] || file.type || 'application/octet-stream';
+  const isImage = mime.startsWith('image/');
+  attached = { dataUrl, base64: dataUrl.split(',')[1], mime, name: file.name || 'arquivo', isImage };
+  previewImg.style.display = isImage ? 'block' : 'none';
+  if (isImage) previewImg.src = dataUrl;
+  previewName.textContent = (isImage ? '🖼️ ' : (mime === 'application/pdf' ? '📄 ' : '📃 ')) + attached.name;
+  previewBar.style.display = 'flex';
+}
+function clearAttached() { attached = null; previewBar.style.display = 'none'; fileEl.value = ''; }
 attachBtn.onclick = () => fileEl.click();
-fileEl.onchange = async () => { if (fileEl.files[0]) setAttached(await fileToDataUrl(fileEl.files[0])); };
+fileEl.onchange = () => setAttachedFile(fileEl.files[0]);
 document.getElementById('preview-clear').onclick = clearAttached;
 document.addEventListener('paste', async e => {
   const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
-  if (item) setAttached(await fileToDataUrl(item.getAsFile()));
+  if (item) setAttachedFile(item.getAsFile());
 });
 
 function newId(p) { return p + '_' + Math.random().toString(36).slice(2, 10); }
@@ -178,14 +187,15 @@ async function send() {
   if (!key) { alert('Informe a API key.'); return; }
   localStorage.setItem('sci_apikey', key);
 
-  const msgText = text || '(analise a imagem que enviei)';
+  const msgText = text || (attached ? '(analise o arquivo que enviei)' : '');
   const userBubble = addUser(msgText);
   if (attached) {
-    const img = el('img'); img.src = attached.dataUrl; userBubble.appendChild(img);
+    if (attached.isImage) { const img = el('img'); img.src = attached.dataUrl; userBubble.appendChild(img); }
+    else userBubble.appendChild(el('div', 'legenda', (attached.mime === 'application/pdf' ? '📄 ' : '📃 ') + attached.name));
   }
   msgEl.value = '';
   sendBtn.disabled = true;
-  const typing = addBot(attached ? 'lendo a imagem…' : 'digitando…', null);
+  const typing = addBot(attached ? 'lendo o arquivo…' : 'digitando…', null);
   typing.parentElement.classList.add('typing');
 
   const payload = {
@@ -194,7 +204,11 @@ async function send() {
     conversa: { id_externo: conversaId, canal: 'web', historico: historico.slice(-20) },
     opcoes: { incluir_debug: debugEl.checked, max_imagens: 3 }
   };
-  if (attached) { payload.imagem_base64 = attached.base64; payload.imagem_mime = attached.mime; }
+  if (attached) {
+    payload.anexo_base64 = attached.base64;
+    payload.anexo_mime = attached.mime;
+    payload.anexo_nome = attached.name;
+  }
   clearAttached();
 
   try {
